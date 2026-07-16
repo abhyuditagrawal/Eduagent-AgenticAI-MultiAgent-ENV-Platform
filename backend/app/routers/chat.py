@@ -31,6 +31,7 @@ from app.services.conversation_context import (
     update_agent_context,
     get_active_mode,
 )
+from app.services.learning_genome import get_genome_summary
 
 logger = structlog.get_logger()
 
@@ -284,6 +285,14 @@ async def chat_stream(
         metadata["agent_context"] = agent_context
     if active_mode:
         metadata["active_mode"] = active_mode
+
+    # Learning Genome: inject the student's cognitive fingerprint for personalisation
+    try:
+        genome_summary = await get_genome_summary(db, current_user.id)
+        if genome_summary:
+            metadata["genome_summary"] = genome_summary
+    except Exception:
+        pass
 
     initial_state = {
         "messages": [{"role": "user", "content": data.message}],

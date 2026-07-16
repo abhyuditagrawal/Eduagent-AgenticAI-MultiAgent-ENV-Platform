@@ -1,8 +1,8 @@
 # EduAgent — Multi-Agent AI Educational Ecosystem
 
-> A full-stack, multi-agent AI platform that provides students with six specialised educational agents sharing a unified knowledge layer (RAG vector store, concept graph, and persistent student state).
+> A full-stack, multi-agent AI platform that provides students with six specialised educational agents sharing a unified knowledge layer (RAG vector store, concept graph, and persistent student state), augmented with Bayesian Knowledge Tracing, predictive forgetting, multi-agent debate, a cognitive Learning Genome, and Zone of Proximal Development (ZPD) visualisation.
 
-EduAgent is designed as a unified learning companion that adapts to each student's knowledge state. Instead of juggling multiple tools for Q&A, exam prep, revision, and self-assessment, students interact with a single platform where six AI agents collaborate through a shared data layer. The LangGraph orchestrator automatically routes each query to the right agent, while SM-2 spaced repetition ensures optimal review scheduling and the concept graph tracks prerequisite relationships across the entire curriculum.
+EduAgent is designed as a unified learning companion that adapts to each student's knowledge state. Instead of juggling multiple tools for Q&A, exam prep, revision, and self-assessment, students interact with a single platform where six AI agents collaborate through a shared data layer. The LangGraph orchestrator automatically routes each query to the right agent, while Bayesian Knowledge Tracing and the Ebbinghaus forgetting curve predict exactly when a concept will be forgotten — enabling proactive review nudges. A per-student *Learning Genome* fingerprints cognitive traits (pace, preferred modality, persistence) to personalise every agent response, and the Knowledge Frontier visualisation operationalises Vygotsky's ZPD so students always know the optimal next concept to study.
 
 ## 🚀 Project Status
 
@@ -36,6 +36,11 @@ EduAgent is designed as a unified learning companion that adapts to each student
 - **Concept Dependency Auto-Detection** from PDF content using LLM
 - **Multi-turn Modes**: Protege teaching sessions, oral viva exams
 - **Essay Critique** with rubric scoring and structured feedback
+- **Bayesian Knowledge Tracing (BKT)** — Hidden Markov Model estimating per-concept mastery probability
+- **Predictive Forgetting** — Ebbinghaus forgetting curve predicts the exact day recall drops below threshold
+- **Multi-Agent Debate & Consensus** — Proponent, Skeptic, and Judge LLM personas debate ambiguous questions; SSE-streamed
+- **Learning Genome** — per-student cognitive fingerprint (pace, modality, persistence, misconceptions) injected into agent prompts
+- **Knowledge Frontier / ZPD** — partitions concepts into mastered, frontier (Zone of Proximal Development), and locked; recommends the best next concept
 - **Dark Mode** with system preference detection
 - **Onboarding Flow** for new students
 - **Admin Panel** for subject/concept management and PDF upload
@@ -50,6 +55,16 @@ EduAgent is designed as a unified learning companion that adapts to each student
 | **Protégé** | Student teaches the AI (Feynman Technique); AI probes for gaps; rubric-graded evaluation |
 | **Oral Viva** | Simulates viva-voce exam; difficulty ladder; structured per-question evaluation |
 | **Essay Critique** | Structured section-level critique with rubric scoring and citation checking |
+
+## 🧠 Advanced Learning Science Features
+
+| Feature | Theory | Implementation |
+|---------|--------|----------------|
+| **Bayesian Knowledge Tracing** | Corbett & Anderson (1994) HMM | Per-concept P(L) updated with P(Slip), P(Guess), P(Transit); difficulty-scaled |
+| **Predictive Forgetting** | Ebbinghaus (1885) exponential decay | R(t) = exp(−t/S); stability grows with successful recall; proactive review alerts |
+| **Multi-Agent Debate** | Socratic dialectic / adversarial reasoning | Proponent + Skeptic + Judge personas; RAG-grounded; SSE-streamed turns |
+| **Learning Genome** | Cognitive profiling / adaptive instruction | Pace, modality, persistence, misconceptions from behavioural data + LLM distillation |
+| **Knowledge Frontier (ZPD)** | Vygotsky (1978) Zone of Proximal Development | Concept graph partitioned by prerequisite mastery; readiness-ranked frontier |
 
 ## 🏗️ Tech Stack
 
@@ -117,18 +132,18 @@ npm run dev
 ```
 ├── backend/
 │   ├── app/
-│   │   ├── agents/          # 6 agents + orchestrator + intent classifier
-│   │   ├── models/          # SQLAlchemy models (user, concept, flashcard, analytics, study)
-│   │   ├── routers/         # FastAPI endpoints (15 routers including WebSocket)
-│   │   ├── services/        # Business logic (auth, streaming, cache, analytics, planner, PDF)
+│   │   ├── agents/          # 6 agents + orchestrator + intent classifier + debate
+│   │   ├── models/          # SQLAlchemy models (user, concept, flashcard, analytics, study, genome)
+│   │   ├── routers/         # FastAPI endpoints (19 routers including WebSocket)
+│   │   ├── services/        # Business logic (auth, streaming, cache, analytics, planner, PDF, BKT, genome, frontier)
 │   │   ├── rag/             # Vector store + embedding
 │   │   └── schemas/         # Pydantic schemas
-│   ├── alembic/             # Database migrations (3 revisions)
+│   ├── alembic/             # Database migrations (4 revisions)
 │   ├── scripts/             # Seed scripts
-│   └── tests/               # pytest test suite (60+ tests)
+│   └── tests/               # pytest test suite (100+ tests)
 ├── frontend/
 │   └── src/
-│       ├── app/(dashboard)/ # 13+ pages: chat, dashboard, flashcards, study-planner, etc.
+│       ├── app/(dashboard)/ # 17+ pages: chat, dashboard, flashcards, knowledge-tracing, debate, learning-genome, knowledge-frontier, etc.
 │       ├── components/      # UI components (chat, dashboard, voice, image upload)
 │       ├── stores/          # Zustand stores
 │       └── lib/             # API client, SSE parser, utils

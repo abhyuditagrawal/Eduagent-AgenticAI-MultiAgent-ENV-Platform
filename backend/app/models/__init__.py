@@ -7,6 +7,7 @@ from app.models.ingestion import IngestionJob
 from app.models.flashcard import Flashcard
 from app.models.analytics import AgentLog, LearningEvent
 from app.models.study import StudyPlan, CustomAgent, StudyRoom, StudyRoomMember
+from app.models.genome import LearningGenome
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "CustomAgent",
     "StudyRoom",
     "StudyRoomMember",
+    "LearningGenome",
 ]

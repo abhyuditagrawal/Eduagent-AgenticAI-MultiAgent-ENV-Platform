@@ -22,6 +22,10 @@ import {
   Users,
   BarChart3,
   Bot,
+  Activity,
+  Swords,
+  Dna,
+  Compass,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -153,6 +157,42 @@ export default function DashboardLayout({
             >
               <Network className="h-4 w-4" />
               Concept Map
+            </Button>
+          </Link>
+          <Link href="/knowledge-frontier">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sm"
+            >
+              <Compass className="h-4 w-4" />
+              Knowledge Frontier
+            </Button>
+          </Link>
+          <Link href="/knowledge-tracing">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sm"
+            >
+              <Activity className="h-4 w-4" />
+              Knowledge Tracing
+            </Button>
+          </Link>
+          <Link href="/debate">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sm"
+            >
+              <Swords className="h-4 w-4" />
+              Debate Arena
+            </Button>
+          </Link>
+          <Link href="/learning-genome">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sm"
+            >
+              <Dna className="h-4 w-4" />
+              Learning Genome
             </Button>
           </Link>
           <Link href="/flashcards">

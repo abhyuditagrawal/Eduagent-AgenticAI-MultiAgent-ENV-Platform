@@ -6,6 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.concept import Concept, ConceptPrerequisite
 from app.models.student import StudentConcept
+from app.services.knowledge_tracing import (
+    bkt_update,
+    update_memory_stability,
+    days_until_forgetting,
+    BKT_P_L0,
+)
 
 logger = structlog.get_logger()
 
@@ -87,8 +93,22 @@ async def update_concept_confidence(
     if quality >= 3:
         sc.correct_count += 1
     sc.confidence_score = min(1.0, max(0.0, quality / 5.0))
-    sc.last_seen_at = datetime.now(timezone.utc)
-    sc.next_review_at = datetime.now(timezone.utc) + timedelta(days=new_interval)
+    now = datetime.now(timezone.utc)
+    sc.last_seen_at = now
+    sc.next_review_at = now + timedelta(days=new_interval)
+
+    # --- Bayesian Knowledge Tracing + predictive forgetting update ---
+    correct = quality >= 3
+    concept = await db.get(Concept, concept_id)
+    difficulty = concept.difficulty_tier if concept else 1
+    prior = sc.bkt_mastery if sc.bkt_mastery is not None else BKT_P_L0
+    sc.bkt_mastery = bkt_update(prior, correct, difficulty)
+    sc.memory_stability = update_memory_stability(
+        sc.memory_stability or 1.0, sc.bkt_mastery, correct
+    )
+    sc.predicted_forget_at = now + timedelta(
+        days=days_until_forgetting(sc.memory_stability)
+    )
 
     await db.commit()
 
@@ -98,6 +118,7 @@ async def update_concept_confidence(
         concept_id=str(concept_id),
         quality=quality,
         new_confidence=sc.confidence_score,
+        bkt_mastery=round(sc.bkt_mastery, 3),
     )
 
 

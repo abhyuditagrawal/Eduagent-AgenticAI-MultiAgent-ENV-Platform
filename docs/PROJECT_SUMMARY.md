@@ -4,7 +4,7 @@ Complete overview of the EduAgent project, its components, status, and how to us
 
 ## Project Overview
 
-**EduAgent** is a full-stack multi-agent AI educational platform that provides students with six specialised AI agents sharing a unified knowledge layer. The system integrates SM-2 spaced repetition, adaptive learning, real-time collaboration, and comprehensive analytics.
+**EduAgent** is a full-stack multi-agent AI educational platform that provides students with six specialised AI agents sharing a unified knowledge layer. The system integrates SM-2 spaced repetition, Bayesian Knowledge Tracing with predictive forgetting, multi-agent debate, a per-student cognitive Learning Genome, Knowledge Frontier (ZPD) visualisation, real-time collaboration, and comprehensive analytics.
 
 **Status**: ✅ **PRODUCTION-READY**
 
@@ -17,9 +17,9 @@ Complete overview of the EduAgent project, its components, status, and how to us
 | **Architecture** | 5-service microservices (PostgreSQL, Qdrant, Redis, FastAPI, Next.js) |
 | **Agents** | 6 specialised agents (Concept QA, Exam Predictor, Weak-Point Tracker, Protégé, Viva, Critique) |
 | **Frontend Pages** | 19+ pages with responsive UI |
-| **Backend Routers** | 15 API routers |
-| **Database Tables** | 15 tables across 3 Alembic migrations |
-| **Tests** | 60+ automated tests (unit + integration) |
+| **Backend Routers** | 19 API routers |
+| **Database Tables** | 16 tables across 4 Alembic migrations |
+| **Tests** | 100+ automated tests (unit + integration) |
 | **Research Paper** | 16-page IEEE-format PDF |
 | **Documentation** | 4,176 lines across 3 comprehensive guides |
 | **Tech Stack** | Next.js 16, FastAPI, PostgreSQL 16, Qdrant, Redis 7, Gemini 2.0 Flash |
@@ -118,15 +118,15 @@ docker compose --profile seed up seed
 - **Testing**: Vitest + React Testing Library
 
 ### Backend (FastAPI)
-- **Routers**: 15 API routers
-- **Services**: 9 service modules
-- **Agents**: 6 specialised AI agents
-- **Models**: 15 SQLAlchemy models
-- **Testing**: 60+ pytest tests
+- **Routers**: 19 API routers (including knowledge_tracing, debate, learning_genome, knowledge_frontier)
+- **Services**: 13 service modules (including BKT engine, genome computation, frontier partitioning)
+- **Agents**: 6 specialised AI agents + multi-agent debate orchestrator
+- **Models**: 16 SQLAlchemy models (including LearningGenome)
+- **Testing**: 100+ pytest tests
 
 ### Database (PostgreSQL 16)
-- **Tables**: 15 (users, subjects, concepts, student_concepts, conversations, messages, flashcards, agent_logs, learning_events, study_plans, custom_agents, study_rooms, etc.)
-- **Migrations**: 3 Alembic versions
+- **Tables**: 16 (users, subjects, concepts, student_concepts, conversations, messages, flashcards, agent_logs, learning_events, study_plans, custom_agents, study_rooms, learning_genomes, etc.)
+- **Migrations**: 4 Alembic versions
 
 ### Vector DB (Qdrant)
 - **Purpose**: RAG (Retrieval-Augmented Generation)
@@ -160,6 +160,13 @@ docker compose --profile seed up seed
 - **Auto-Generated Flashcards**: Extracted from conversations
 - **Confidence Decay**: Reflects realistic retention curves
 - **Smart Study Planner**: AI-generated day-by-day schedules
+- **Bayesian Knowledge Tracing (BKT)**: HMM-based mastery estimation with P(L0), P(T), P(Slip), P(Guess); difficulty-scaled
+- **Predictive Forgetting**: Ebbinghaus curve R(t)=exp(-t/S) predicts the exact day each concept will be forgotten
+
+### 3b. Advanced Learning Science
+- **Multi-Agent Debate & Consensus**: Proponent, Skeptic, and Judge LLM personas debate ambiguous questions; RAG-grounded; SSE-streamed
+- **Learning Genome**: Per-student cognitive fingerprint (pace, modality, persistence, misconceptions) injected into agent system prompts
+- **Knowledge Frontier / ZPD**: Partitions concepts into mastered, frontier (Zone of Proximal Development), and locked; recommends the single best next concept
 
 ### 4. Real-Time Features
 - **WebSocket Study Rooms**: Collaborative learning with shared AI
@@ -259,7 +266,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## Testing
 
-### Backend Tests (60+)
+### Backend Tests (100+)
 ```bash
 # Run all tests
 docker exec eduagent-backend pytest tests/ -v

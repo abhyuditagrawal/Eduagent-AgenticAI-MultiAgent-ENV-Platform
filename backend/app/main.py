@@ -142,6 +142,7 @@ from app.routers import (
     auth, subjects, chat, ingestion, concepts, nudges, dashboard,
     flashcards, analytics, study_planner, progress_report,
     custom_agents, study_rooms, image_chat, ws_study,
+    knowledge_tracing, debate, learning_genome, knowledge_frontier,
 )
 
 app.include_router(auth.router)
@@ -159,6 +160,10 @@ app.include_router(custom_agents.router)
 app.include_router(study_rooms.router)
 app.include_router(image_chat.router)
 app.include_router(ws_study.router)
+app.include_router(knowledge_tracing.router)
+app.include_router(debate.router)
+app.include_router(learning_genome.router)
+app.include_router(knowledge_frontier.router)
 
 
 @app.get("/health")

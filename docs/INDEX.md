@@ -167,7 +167,8 @@ docker exec eduagent-backend alembic upgrade head
 - Related Work (5 subsections)
 - System Architecture (6 subsections)
 - Agent Design (8 agents detailed)
-- Adaptive Learning Engine (5 subsections)
+- Adaptive Learning Engine (5 subsections) including BKT, predictive forgetting, Learning Genome
+- Advanced Features: Multi-Agent Debate & Consensus, Knowledge Frontier / ZPD
 - Collaboration and Real-Time Features (3 subsections)
 - Analytics and Observability (5 subsections)
 - Custom Agent Builder
@@ -175,7 +176,7 @@ docker exec eduagent-backend alembic upgrade head
 - Evaluation (user study protocol)
 - Discussion (benefits, limitations, future work)
 - Conclusion
-- 20 references
+- 24 references
 - 6 tables
 
 **When to Read**: You want to understand the research and technical details

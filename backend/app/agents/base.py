@@ -122,7 +122,16 @@ class BaseAgent:
         if inter_agent:
             inter_agent_text = f"\n\n--- Cross-Agent Intelligence ---\n{inter_agent}\n--- End Cross-Agent Intelligence ---\n"
 
-        return f"{self.system_prompt}\n{context_text}\n{inter_agent_text}\n{history_text}\nStudent: {user_message}"
+        # Learning Genome: personalise the response to the student's cognitive profile
+        genome_summary = state.get("metadata", {}).get("genome_summary", "")
+        genome_text = ""
+        if genome_summary:
+            genome_text = (
+                f"\n\n--- Learning Genome (adapt your response to this student) ---\n"
+                f"{genome_summary}\n--- End Learning Genome ---\n"
+            )
+
+        return f"{self.system_prompt}\n{context_text}\n{inter_agent_text}\n{genome_text}\n{history_text}\nStudent: {user_message}"
 
     async def reason(self, state: AgentState, context: list[dict]) -> str:
         model = get_gemini_model()

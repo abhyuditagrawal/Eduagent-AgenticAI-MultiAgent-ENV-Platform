@@ -61,7 +61,16 @@ ABSTRACT = (
     "planner; voice-enabled oral viva simulation; multimodal diagram understanding via Google "
     "Gemini; WebSocket-based collaborative study rooms; a custom agent builder for professors; "
     "comprehensive class-level analytics; and automated concept dependency detection from "
-    "uploaded course material. The system is deployed as a five-service Docker Compose stack "
+    "uploaded course material. Beyond these, EduAgent introduces four novel learning-intelligence "
+    "contributions: (i) a Bayesian Knowledge Tracing (BKT) engine that estimates the latent "
+    "probability a skill is truly learned; (ii) a predictive forgetting model based on the "
+    "Ebbinghaus retention curve that forecasts the exact day each concept will be forgotten and "
+    "triggers proactive review; (iii) a Multi-Agent Debate and Consensus mode in which a "
+    "Proponent and a Skeptic argue a question and a neutral Judge synthesises a balanced answer; "
+    "and (iv) a Learning Genome — a per-student cognitive fingerprint (pace, preferred modality, "
+    "peak study hour, persistence, and misconception signatures) that every agent adapts to — "
+    "together with a Knowledge Frontier that operationalises Vygotsky’s Zone of Proximal "
+    "Development to recommend the single best next concept to study. The system is deployed as a five-service Docker Compose stack "
     "(PostgreSQL 16, Qdrant, Redis 7, FastAPI, Next.js 16) with 60+ automated tests. A "
     "structured user study protocol demonstrates the platform\u2019s effectiveness in improving "
     "learning outcomes through adaptive, multi-agent interaction."
@@ -70,7 +79,8 @@ ABSTRACT = (
 KEYWORDS = [
     "Multi-Agent Systems", "Educational AI", "Retrieval-Augmented Generation",
     "Spaced Repetition", "LangGraph", "Adaptive Learning", "Inter-Agent Collaboration",
-    "Large Language Models", "Concept Graph",
+    "Large Language Models", "Concept Graph", "Bayesian Knowledge Tracing",
+    "Predictive Forgetting", "Zone of Proximal Development", "Multi-Agent Debate",
 ]
 
 # ---------------------------------------------------------------------------
@@ -150,17 +160,27 @@ SEC_I_INTRO = ("I. Introduction", [
     "(7) A custom agent builder enabling professors to create domain-specific assessment "
     "agents with custom system prompts and rubrics, without writing code. "
     "(8) Comprehensive class-level analytics with agent performance monitoring, weak "
-    "concept identification, and automated progress report PDF export.",
+    "concept identification, and automated progress report PDF export. "
+    "(9) A Bayesian Knowledge Tracing engine with an Ebbinghaus-based predictive "
+    "forgetting model for proactive, mastery-aware intervention. "
+    "(10) A Multi-Agent Debate and Consensus mode that surfaces multiple perspectives on "
+    "ambiguous questions through adversarial reasoning and neutral synthesis. "
+    "(11) A Learning Genome cognitive fingerprint injected into every agent for continuous "
+    "personalisation. (12) A Knowledge Frontier that operationalises the Zone of Proximal "
+    "Development to provide a next-best-concept learning GPS.",
 
     "The remainder of this paper is organised as follows. Section II surveys related work "
     "in educational AI, multi-agent systems, and spaced repetition. Section III describes "
     "the system architecture including all five services and data flows. Section IV details "
     "the design of each specialised agent and the orchestrator. Section V covers the "
     "adaptive learning engine including SM-2 integration and study planning. Section VI "
-    "describes collaboration and real-time features. Section VII covers analytics and "
-    "observability. Section VIII presents the custom agent builder. Section IX details "
-    "implementation specifics. Section X presents the evaluation methodology and results. "
-    "Section XI discusses findings, limitations, and future work. Section XII concludes.",
+    "presents the advanced learning-intelligence engines: Bayesian Knowledge Tracing, "
+    "predictive forgetting, multi-agent debate, the Learning Genome, and the Knowledge "
+    "Frontier. Section VII describes collaboration and real-time features. Section VIII "
+    "covers analytics and observability. Section IX presents the custom agent builder. "
+    "Section X details implementation specifics. Section XI presents the evaluation "
+    "methodology and results. Section XII discusses findings, limitations, and future "
+    "work. Section XIII concludes.",
 ])
 
 SEC_II_RELATED = ("II. Related Work", [
@@ -654,7 +674,100 @@ SEC_V_ADAPTIVE = ("V. Adaptive Learning Engine", [
     "actual pedagogical structure of the material.",
 ])
 
-SEC_VI_COLLAB = ("VI. Collaboration and Real-Time Features", [
+SEC_VI_ADVANCED = ("VI. Advanced Learning Intelligence", [
+    "While the SM-2 scheduler of Section V provides a robust heuristic for review "
+    "timing, EduAgent augments it with four research-grade learning-intelligence engines "
+    "that move the platform from reactive tutoring toward proactive, cognitively-aware "
+    "personalisation. This section details the Bayesian Knowledge Tracing engine, the "
+    "predictive forgetting model, the Multi-Agent Debate mode, the Learning Genome, and "
+    "the Knowledge Frontier.",
+
+    "A. Bayesian Knowledge Tracing",
+
+    "SM-2 conflates a review outcome with mastery, yet a single lucky guess should not "
+    "imply understanding, nor should one slip erase it. To model the latent state of "
+    "knowledge, EduAgent implements Bayesian Knowledge Tracing (BKT) [21], a two-state "
+    "Hidden Markov Model that maintains P(L) \u2014 the posterior probability that a skill "
+    "is truly learned. Four parameters govern the model: the prior P(L0) that the skill "
+    "is already known (default 0.10); the transition probability P(T) of moving from the "
+    "unlearned to the learned state per practice opportunity; the slip probability P(S) "
+    "of answering incorrectly despite mastery (0.10); and the guess probability P(G) of "
+    "answering correctly without mastery (0.20).",
+
+    "After each observation, the posterior is computed via Bayes\u2019 rule. For a correct "
+    "response, P(L | correct) = P(L)(1\u2212P(S)) / [P(L)(1\u2212P(S)) + (1\u2212P(L))P(G)]; "
+    "for an incorrect response the slip and guess terms are exchanged. A learning "
+    "transition is then applied: P(L_next) = P(L | obs) + (1 \u2212 P(L | obs)) \u00b7 P(T). "
+    "The transition rate is difficulty-aware \u2014 foundational concepts use P(T)=0.20 "
+    "while advanced concepts use P(T)=0.10 \u2014 so that harder skills require more "
+    "evidence to be considered mastered. BKT mastery is stored per StudentConcept and "
+    "updated inside the same transaction as the SM-2 confidence update, so the two "
+    "models evolve in lockstep without additional LLM calls.",
+
+    "B. Predictive Forgetting",
+
+    "Complementing BKT, EduAgent models memory decay explicitly using the Ebbinghaus "
+    "forgetting curve [16], expressing retrievability as R(t) = exp(\u2212t / S), where t "
+    "is the number of days since the last review and S is the memory stability in days. "
+    "Each successful review multiplies stability by a factor between 1.4 and 2.4 scaled "
+    "by current mastery (the spacing effect), capped at one year; each failure halves it. "
+    "By solving R(t) = \u03b8 for the retention threshold \u03b8 = 0.5, the engine derives "
+    "t = \u2212S \u00b7 ln(\u03b8), the predicted day on which the concept will fall below "
+    "the recall threshold. This timestamp (predicted_forget_at) drives a forgetting "
+    "forecast that buckets upcoming at-risk concepts by day, allowing the platform to "
+    "surface \u2018review before you forget\u2019 nudges rather than waiting for the SM-2 "
+    "due date to pass. The current recall probability blends the forgetting curve with "
+    "BKT mastery, reflecting that well-consolidated skills decay more slowly.",
+
+    "C. Multi-Agent Debate and Consensus",
+
+    "For ambiguous or contested questions, a single tutor response can mask nuance or "
+    "propagate a subtle error. Inspired by multi-agent reasoning frameworks [4][5][13], "
+    "EduAgent introduces a structured debate among three LLM personas grounded in the "
+    "student\u2019s course material via RAG. A Proponent argues the clearest textbook "
+    "position; a Skeptic critically examines it, surfacing edge cases, alternative "
+    "interpretations, and common misconceptions; and a neutral Judge synthesises a "
+    "balanced, evidence-grounded consensus with an explicit confidence rating. Optional "
+    "rebuttal rounds allow the Proponent to respond to the Skeptic before adjudication. "
+    "Each turn is streamed to the client over Server-Sent Events, so students watch the "
+    "reasoning unfold turn by turn. Unlike a single chain-of-thought answer, the debate "
+    "externalises disagreement, which both improves answer calibration and models expert "
+    "epistemic behaviour for the learner.",
+
+    "D. The Learning Genome",
+
+    "The Learning Genome is a per-student cognitive fingerprint that every agent adapts "
+    "to. It is computed from behavioural signals rather than self-report: learning pace "
+    "is derived from the average number of attempts required to reach mastery; the "
+    "preferred modality is the most-used agent type; the peak study hour is the "
+    "hour-of-day with the most activity; persistence is the fraction of weak concepts a "
+    "student revisits; and average session length is inferred by grouping message "
+    "timestamps into sessions separated by 30-minute gaps. A lightweight LLM pass "
+    "distils recurring misconception patterns and strengths from recent messages. These "
+    "signals are condensed into a natural-language summary that is injected into every "
+    "agent\u2019s system prompt \u2014 for example, a slow-paced learner receives additional "
+    "scaffolding and more frequent comprehension checks, while a fast-paced learner "
+    "receives challenge extensions. The genome is stored in a dedicated learning_genomes "
+    "table and recomputed on demand, growing more accurate as interaction data "
+    "accumulates. This provides a single, evolving personalisation layer shared across "
+    "all six specialised agents.",
+
+    "E. The Knowledge Frontier (Zone of Proximal Development)",
+
+    "The Knowledge Frontier operationalises Vygotsky\u2019s Zone of Proximal Development "
+    "(ZPD) [22] \u2014 the band of concepts a learner cannot yet grasp alone but can master "
+    "with guidance. Using the concept dependency graph and per-concept mastery, the "
+    "engine partitions a subject into three sets: mastered concepts (own mastery \u2265 "
+    "0.70); frontier concepts (not yet mastered, but all prerequisites satisfied at \u2265 "
+    "0.60) \u2014 precisely the ZPD; and locked concepts (blocked by at least one weak "
+    "prerequisite). Frontier concepts are ranked by a readiness score that rewards high "
+    "prerequisite mastery and low own-mastery while gently favouring foundational "
+    "concepts, yielding a \u2018learning GPS\u2019 that recommends the single best next "
+    "concept to study. This transforms the otherwise static concept map into a dynamic, "
+    "individualised study path that respects prerequisite structure.",
+])
+
+SEC_VI_COLLAB = ("VII. Collaboration and Real-Time Features", [
     "EduAgent extends beyond individual learning to support collaborative educational "
     "experiences through WebSocket-based study rooms, voice interaction, and multimodal "
     "content understanding.",
@@ -712,7 +825,7 @@ SEC_VI_COLLAB = ("VI. Collaboration and Real-Time Features", [
     "visual learning modalities that are particularly important in STEM education.",
 ])
 
-SEC_VII_ANALYTICS = ("VII. Analytics and Observability", [
+SEC_VII_ANALYTICS = ("VIII. Analytics and Observability", [
     "EduAgent provides comprehensive analytics and observability features for both "
     "students and administrators, enabling data-driven insights into learning progress "
     "and system performance.",
@@ -775,7 +888,7 @@ SEC_VII_ANALYTICS = ("VII. Analytics and Observability", [
     "understand student learning behaviours.",
 ])
 
-SEC_VIII_CUSTOM = ("VIII. Custom Agent Builder", [
+SEC_VIII_CUSTOM = ("IX. Custom Agent Builder", [
     "EduAgent provides an extensibility mechanism through the custom agent builder, "
     "enabling professors to create domain-specific assessment agents without writing "
     "code. Each custom agent is defined by four properties stored in the custom_agents "
@@ -804,7 +917,7 @@ SEC_VIII_CUSTOM = ("VIII. Custom Agent Builder", [
     "contexts beyond its built-in agent capabilities.",
 ])
 
-SEC_IX_IMPL = ("IX. Implementation Details", [
+SEC_IX_IMPL = ("X. Implementation Details", [
     "A. Backend Implementation",
 
     "The backend is implemented in Python 3.11+ with FastAPI, comprising 15 API routers, "
@@ -873,7 +986,7 @@ SEC_IX_IMPL = ("IX. Implementation Details", [
     "connection string.",
 ])
 
-SEC_X_EVAL = ("X. Evaluation", [
+SEC_X_EVAL = ("XI. Evaluation", [
     "A. User Study Protocol",
 
     "A structured user study protocol has been designed to evaluate EduAgent\u2019s "
@@ -933,7 +1046,7 @@ SEC_X_EVAL = ("X. Evaluation", [
     "15\u201320 participants.",
 ])
 
-SEC_XI_DISCUSS = ("XI. Discussion", [
+SEC_XI_DISCUSS = ("XII. Discussion", [
     "A. Multi-Agent Architecture Benefits",
 
     "EduAgent demonstrates that a multi-agent architecture with inter-agent collaboration "
@@ -1009,7 +1122,7 @@ SEC_XI_DISCUSS = ("XI. Discussion", [
     "within study rooms.",
 ])
 
-SEC_XII_CONCLUSION = ("XII. Conclusion", [
+SEC_XII_CONCLUSION = ("XIII. Conclusion", [
     "This paper presented EduAgent, a multi-agent AI educational platform that goes "
     "beyond single-chatbot solutions by providing six specialised agents with "
     "inter-agent collaboration, sharing a unified knowledge layer. The system "
@@ -1044,7 +1157,7 @@ SEC_XII_CONCLUSION = ("XII. Conclusion", [
 
 SECTIONS = [
     SEC_I_INTRO, SEC_II_RELATED, SEC_III_ARCH, SEC_IV_AGENTS,
-    SEC_V_ADAPTIVE, SEC_VI_COLLAB, SEC_VII_ANALYTICS, SEC_VIII_CUSTOM,
+    SEC_V_ADAPTIVE, SEC_VI_ADVANCED, SEC_VI_COLLAB, SEC_VII_ANALYTICS, SEC_VIII_CUSTOM,
     SEC_IX_IMPL, SEC_X_EVAL, SEC_XI_DISCUSS, SEC_XII_CONCLUSION,
 ]
 
@@ -1085,6 +1198,11 @@ REFERENCES = [
     '[19] J. Devlin et al., "BERT: Pre-training of Deep Bidirectional Transformers '
          'for Language Understanding," NAACL, 2019.',
     '[20] T. Brown et al., "Language Models are Few-Shot Learners," NeurIPS, 2020.',
+    '[21] A. T. Corbett and J. R. Anderson, "Knowledge Tracing: Modeling the Acquisition '
+         'of Procedural Knowledge," User Modeling and User-Adapted Interaction, 1994.',
+    '[22] L. S. Vygotsky, "Mind in Society: The Development of Higher Psychological '
+         'Processes," Harvard University Press, 1978.',
+    '[23] C. Piech et al., "Deep Knowledge Tracing," NeurIPS, 2015.',
 ]
 
 # ---------------------------------------------------------------------------
@@ -1214,7 +1332,7 @@ SECTION_TABLES = {
         ("TABLE I: EduAgent Specialised Agents", TABLE_AGENTS),
         ("TABLE VI: Inter-Agent Collaboration Patterns", TABLE_INTER_AGENT),
     ],
-    "VI. Collaboration and Real-Time Features": [
+    "VII. Collaboration and Real-Time Features": [
         ("TABLE III: Key Features Summary", TABLE_FEATURES),
     ],
     "II. Related Work": [

@@ -91,7 +91,57 @@
 
 ---
 
-### Scene 7: Architecture Overview (20 seconds)
+### Scene 7: Knowledge Tracing & Forgetting Forecast (30 seconds)
+
+**Action**:
+1. Navigate to Knowledge Tracing page
+2. Select a subject
+3. Show the mastery probability bars per concept
+4. Show the forgetting forecast chart — concepts predicted to drop below threshold over the next 14 days
+5. Point out at-risk concepts highlighted in red
+
+**Voiceover**: "The Knowledge Tracing page uses Bayesian Knowledge Tracing — a Hidden Markov Model — to estimate the true probability each concept is learned. Combined with the Ebbinghaus forgetting curve, it predicts exactly when recall will drop below 50%, so students get proactive review nudges before they forget."
+
+---
+
+### Scene 8: Multi-Agent Debate Arena (40 seconds)
+
+**Action**:
+1. Navigate to the Debate page
+2. Select a subject and type an ambiguous question, e.g. "Is normalisation always necessary before training a neural network?"
+3. Show the Proponent's argument streaming in
+4. Show the Skeptic's critique appearing
+5. Show the Judge's consensus with a confidence rating
+
+**Voiceover**: "For nuanced questions, a single-agent answer can hide complexity. The Debate Arena uses three LLM personas — a Proponent, a Skeptic, and a Judge — grounded in the student's course material via RAG. The structured debate exposes edge cases and produces a balanced, evidence-based consensus."
+
+---
+
+### Scene 9: Learning Genome (20 seconds)
+
+**Action**:
+1. Navigate to Learning Genome page
+2. Show the cognitive fingerprint: pace, preferred modality, optimal study hour, persistence score
+3. Show the LLM-identified misconceptions and strengths
+4. Click "Recompute"
+
+**Voiceover**: "The Learning Genome builds a cognitive fingerprint for each student — their learning pace, preferred agent type, study patterns, and recurring misconceptions. This profile is injected into every agent's system prompt, so responses are automatically personalised."
+
+---
+
+### Scene 10: Knowledge Frontier / ZPD (25 seconds)
+
+**Action**:
+1. Navigate to Knowledge Frontier page
+2. Show the three zones: mastered (green), frontier / ZPD (amber), locked (grey)
+3. Point to the "Next Best Concept" recommendation
+4. Show locked concepts with their missing prerequisites listed
+
+**Voiceover**: "The Knowledge Frontier operationalises Vygotsky's Zone of Proximal Development. It partitions every concept into mastered, frontier — concepts you're ready to learn next — and locked. The 'Next Best' recommendation guides students to the single most impactful concept to study."
+
+---
+
+### Scene 11: Architecture Overview (20 seconds)
 
 **Action**: Show a quick diagram (from the IEEE paper or ARCHITECTURE.md) or the API docs at `http://localhost:8000/docs`
 
@@ -99,7 +149,7 @@
 
 ---
 
-### Scene 8: Closing (15 seconds)
+### Scene 12: Closing (15 seconds)
 
 **Voiceover**: "EduAgent demonstrates that a multi-agent architecture with shared state produces a more effective learning experience than a generic chatbot. Thank you for watching."
 

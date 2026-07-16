@@ -12,10 +12,46 @@ export async function streamChat(
   agentOverride: string | null,
   onEvent: (event: SSEEvent) => void
 ): Promise<void> {
+  await streamSSE(
+    "/api/chat/stream",
+    {
+      message,
+      conversation_id: conversationId,
+      subject_id: subjectId,
+      agent_override: agentOverride,
+    },
+    onEvent
+  );
+}
+
+/**
+ * Stream a multi-agent debate. Emits debate_start, turn_start, turn, done.
+ */
+export async function streamDebate(
+  question: string,
+  subjectId: string | null,
+  rounds: number,
+  onEvent: (event: SSEEvent) => void
+): Promise<void> {
+  await streamSSE(
+    "/api/debate/stream",
+    { question, subject_id: subjectId, rounds },
+    onEvent
+  );
+}
+
+/**
+ * Generic Server-Sent-Events POST helper shared by chat and debate.
+ */
+export async function streamSSE(
+  path: string,
+  body: Record<string, unknown>,
+  onEvent: (event: SSEEvent) => void
+): Promise<void> {
   const session = await getSession();
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-  const response = await fetch(`${baseUrl}/api/chat/stream`, {
+  const response = await fetch(`${baseUrl}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -23,12 +59,7 @@ export async function streamChat(
         ? { Authorization: `Bearer ${session.accessToken}` }
         : {}),
     },
-    body: JSON.stringify({
-      message,
-      conversation_id: conversationId,
-      subject_id: subjectId,
-      agent_override: agentOverride,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
