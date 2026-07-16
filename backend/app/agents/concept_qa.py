@@ -168,11 +168,65 @@ class ConceptQAAgent(BaseAgent):
                 touched = state.get("concept_ids_touched", [])
 
                 if touched and len(user_msg) > 10:
-                    # Simple heuristic: if answer is substantial, give quality 3-4
-                    quality = 3 if len(user_msg) < 50 else 4
+                    quality = await self._llm_assess_answer(
+                        prev_assistant, user_msg, state
+                    )
                     return [
                         {"concept_id": cid, "quality": quality}
                         for cid in touched[:3]
                     ]
 
         return []
+
+    async def _llm_assess_answer(
+        self, question_context: str, student_answer: str, state: AgentState
+    ) -> int:
+        """Use the LLM to evaluate student answer quality on a 1-5 scale."""
+        rag_context = state.get("rag_context", [])
+        ground_truth = ""
+        if rag_context:
+            ground_truth = "\n".join(
+                c.get("text", "")[:300] for c in rag_context[:3]
+            )
+
+        assess_prompt = (
+            "You are an educational assessment engine. Evaluate the student's answer "
+            "to a comprehension check question.\n\n"
+            f"Question/Context from tutor:\n{question_context[-500:]}\n\n"
+            f"Student's answer:\n{student_answer}\n\n"
+        )
+        if ground_truth:
+            assess_prompt += (
+                f"Ground truth from course material:\n{ground_truth}\n\n"
+            )
+        assess_prompt += (
+            "Rate the student's understanding on a scale of 1-5:\n"
+            "1 = Complete misconception or irrelevant answer\n"
+            "2 = Partially wrong with significant gaps\n"
+            "3 = Roughly correct but superficial or incomplete\n"
+            "4 = Correct with good understanding\n"
+            "5 = Excellent, thorough and precise answer\n\n"
+            "Respond with ONLY a single integer (1-5), nothing else."
+        )
+
+        try:
+            model = get_gemini_model()
+            resp = model.generate_content(
+                assess_prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.0, max_output_tokens=5
+                ),
+            )
+            score_text = resp.text.strip()
+            score = int(score_text[0]) if score_text and score_text[0].isdigit() else 3
+            return max(1, min(5, score))
+        except Exception as e:
+            logger.warning("llm_assessment_failed", error=str(e))
+            # Fallback to improved heuristic
+            word_count = len(student_answer.split())
+            if word_count < 5:
+                return 2
+            elif word_count < 20:
+                return 3
+            else:
+                return 4

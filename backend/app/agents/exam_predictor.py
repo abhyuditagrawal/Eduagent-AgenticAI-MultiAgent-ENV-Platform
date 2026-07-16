@@ -114,6 +114,101 @@ class ExamPredictorAgent(BaseAgent):
     async def assess_understanding(
         self, state: AgentState, response: str
     ) -> list[dict]:
-        # If the student is answering practice questions, assess them
-        # For now, no auto-assessment — will be enhanced in future phases
-        return []
+        # Check if the student is answering a practice question from a previous turn
+        history = state.get("conversation_history", [])
+        messages = state.get("messages", [])
+
+        if len(history) < 2:
+            return []
+
+        # Find the last assistant message to see if it contained a practice question
+        prev_assistant = None
+        for msg in reversed(history[:-1]):
+            if msg["role"] == "assistant":
+                prev_assistant = msg["content"]
+                break
+
+        if not prev_assistant:
+            return []
+
+        # Detect if previous response contained practice questions
+        question_indicators = [
+            "practice question", "try this", "test yourself",
+            "answer the following", "here's a question",
+            "Q1", "Q2", "Q3", "Question 1", "Question 2",
+        ]
+        has_question = any(
+            ind.lower() in prev_assistant.lower() for ind in question_indicators
+        ) or prev_assistant.count("?") >= 2
+
+        if not has_question:
+            return []
+
+        user_msg = messages[-1] if isinstance(messages[-1], str) else messages[-1].get("content", "")
+        if len(user_msg.split()) < 5:
+            return []
+
+        # Use LLM to evaluate the student's answer
+        quality = await self._llm_evaluate_exam_answer(
+            prev_assistant, user_msg, state
+        )
+
+        # Apply quality to all touched concepts or weak concepts
+        student_state = state.get("student_state", {})
+        touched = state.get("concept_ids_touched", [])
+
+        if touched:
+            return [{"concept_id": cid, "quality": quality} for cid in touched[:5]]
+
+        # If no concepts explicitly touched, apply to weak concepts
+        weak_ids = [
+            cid for cid, cdata in student_state.items()
+            if cdata.get("confidence", 0) < 0.5
+        ]
+        return [{"concept_id": cid, "quality": quality} for cid in weak_ids[:3]]
+
+    async def _llm_evaluate_exam_answer(
+        self, question_context: str, student_answer: str, state: AgentState
+    ) -> int:
+        """Use LLM to evaluate a student's answer to an exam practice question."""
+        rag_context = state.get("rag_context", [])
+        ground_truth = ""
+        if rag_context:
+            ground_truth = "\n".join(
+                c.get("text", "")[:300] for c in rag_context[:3]
+            )
+
+        eval_prompt = (
+            "You are an exam grader. Evaluate the student's answer to the "
+            "practice question(s) below.\n\n"
+            f"Practice question(s) given:\n{question_context[-800:]}\n\n"
+            f"Student's answer:\n{student_answer}\n\n"
+        )
+        if ground_truth:
+            eval_prompt += (
+                f"Reference material:\n{ground_truth}\n\n"
+            )
+        eval_prompt += (
+            "Rate the answer quality on a scale of 1-5:\n"
+            "1 = Completely wrong or off-topic\n"
+            "2 = Mostly incorrect with some relevant points\n"
+            "3 = Partially correct but missing key details\n"
+            "4 = Largely correct with minor gaps\n"
+            "5 = Fully correct and well-explained\n\n"
+            "Respond with ONLY a single integer (1-5), nothing else."
+        )
+
+        try:
+            model = get_gemini_model()
+            resp = model.generate_content(
+                eval_prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.0, max_output_tokens=5
+                ),
+            )
+            score_text = resp.text.strip()
+            score = int(score_text[0]) if score_text and score_text[0].isdigit() else 3
+            return max(1, min(5, score))
+        except Exception as e:
+            logger.error("exam_eval_failed", error=str(e))
+            return 3
