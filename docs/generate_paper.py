@@ -301,7 +301,7 @@ SEC_III_ARCH = ("III. System Architecture", [
 
     "The backend is an asynchronous Python API server built with FastAPI, leveraging "
     "Python\u2019s asyncio ecosystem for non-blocking I/O operations across database "
-    "queries, LLM API calls, and vector store retrievals. The server exposes 15 API "
+    "queries, LLM API calls, and vector store retrievals. The server exposes 19 API "
     "routers organised by domain: authentication (login, register, token refresh), chat "
     "(message submission, conversation management, SSE streaming), subjects (CRUD, "
     "enrollment), concepts (CRUD, prerequisite management), dashboard (mastery summary, "
@@ -309,11 +309,14 @@ SEC_III_ARCH = ("III. System Architecture", [
     "auto-generate, manual create), analytics (agent performance, class mastery, weak "
     "concepts, intent distribution), study planner (generate, list), progress reports "
     "(PDF export), custom agents (CRUD), study rooms (create, join, list), image chat "
-    "(multimodal analysis), and WebSocket (real-time messaging).",
+    "(multimodal analysis), WebSocket (real-time messaging), knowledge tracing (BKT "
+    "mastery probabilities, forgetting forecast, observation recording), debate (multi-agent "
+    "debate SSE streaming), learning genome (read and refresh cognitive fingerprint), and "
+    "knowledge frontier (ZPD concept partitioning).",
 
     "Database access uses SQLAlchemy 2.0 with the async PostgreSQL driver (asyncpg), "
     "providing type-safe ORM operations with mapped columns and async session management. "
-    "Schema migrations are managed by Alembic across 3 versioned migration files. The "
+    "Schema migrations are managed by Alembic across 4 versioned migration files. The "
     "backend implements structured logging via structlog for machine-parseable log output, "
     "and includes startup health checks that validate the Gemini API key, Redis "
     "connectivity, and database accessibility.",
@@ -321,7 +324,7 @@ SEC_III_ARCH = ("III. System Architecture", [
     "C. PostgreSQL 16 (Relational Database)",
 
     "PostgreSQL 16 serves as the primary relational database, storing all persistent "
-    "application state across 15 tables. The core schema includes: users (authentication "
+    "application state across 16 tables. The core schema includes: users (authentication "
     "credentials, roles, preferences), subjects (course metadata), concepts (topic nodes "
     "with chapter, difficulty_tier, and description), concept_prerequisites (directed "
     "edges forming the concept dependency graph), enrollments (student-subject "
@@ -920,10 +923,12 @@ SEC_VIII_CUSTOM = ("IX. Custom Agent Builder", [
 SEC_IX_IMPL = ("X. Implementation Details", [
     "A. Backend Implementation",
 
-    "The backend is implemented in Python 3.11+ with FastAPI, comprising 15 API routers, "
-    "9 service modules (student_state, streaming, cache, analytics, flashcard_service, "
-    "planner_service, pdf_report, concept_graph, auth), 6 specialised agent classes "
-    "plus a BaseAgent superclass, and 15 database models spread across 6 model files. "
+    "The backend is implemented in Python 3.11+ with FastAPI, comprising 19 API routers, "
+    "13 service modules (student_state, streaming, cache, analytics, flashcard_service, "
+    "planner_service, pdf_report, concept_graph, auth, knowledge_tracing, knowledge_frontier, "
+    "learning_genome, and the debate orchestrator), 6 specialised agent classes "
+    "plus a BaseAgent superclass and a multi-agent debate orchestrator, and 16 database "
+    "models spread across 7 model files (including the LearningGenome model). "
     "The codebase follows a clean separation of concerns: routers handle HTTP request "
     "validation and response formatting, services encapsulate business logic and "
     "database access, and agents manage LLM prompt construction and response generation.",
@@ -970,14 +975,18 @@ SEC_IX_IMPL = ("X. Implementation Details", [
 
     "D. Testing",
 
-    "Testing includes 60+ automated tests across three layers. Backend unit tests "
+    "Testing includes 100+ automated tests across three layers. Backend unit tests "
     "validate the SM-2 algorithm (8 test cases covering all branches), password hashing "
-    "and verification, and utility functions. Backend integration tests validate intent "
-    "classification, student state management, nudge engine behaviour, dashboard "
-    "endpoint responses, orchestrator graph structure, and API endpoint authentication. "
-    "Frontend tests use Vitest with React Testing Library and jsdom to test Zustand "
-    "store operations (6 tests for chat state management), component rendering, and "
-    "user interaction flows.",
+    "and verification, Bayesian Knowledge Tracing functions (14 tests for posterior "
+    "update, mastery update, memory stability, and forgetting curve calculations), "
+    "Knowledge Frontier readiness scoring and partitioning logic (12 tests), multi-agent "
+    "debate context formatting and prompt templates (10 tests), Learning Genome summary "
+    "builder and modality labels (9 tests), and utility functions. Backend integration "
+    "tests validate intent classification, student state management, nudge engine "
+    "behaviour, dashboard endpoint responses, orchestrator graph structure, and API "
+    "endpoint authentication. Frontend tests use Vitest with React Testing Library and "
+    "jsdom to test Zustand store operations (6 tests for chat state management), "
+    "component rendering, and user interaction flows.",
 
     "Test infrastructure includes: pytest fixtures for database sessions and test "
     "clients (conftest.py), pytest-asyncio for async test support, httpx for async "
@@ -1092,10 +1101,11 @@ SEC_XI_DISCUSS = ("XII. Discussion", [
     "Several limitations should be acknowledged: (1) Dependency on a single LLM "
     "provider (Google Gemini) creates a single point of failure. If the Gemini API "
     "experiences downtime or rate limiting, all agent functionality is affected. "
-    "(2) The SM-2 algorithm, while well-established, is relatively simple compared "
-    "to more sophisticated memory models such as DASH or HL. These newer models "
-    "account for forgetting curve shape, study context, and individual memory "
-    "parameters more precisely. (3) Real-time collaboration is currently limited to "
+    "(2) While BKT improves on SM-2 by separating mastery from performance, the "
+    "four BKT parameters (P(L0), P(T), P(S), P(G)) currently use tuned defaults "
+    "rather than being fitted per-student from interaction histories. Per-student "
+    "parameter estimation via expectation-maximisation would further improve mastery "
+    "accuracy. (3) Real-time collaboration is currently limited to "
     "text-based study rooms. Features such as shared whiteboards, collaborative "
     "document editing, or synchronised concept map exploration would enhance the "
     "collaborative learning experience. (4) Intent classification relies on "
@@ -1103,7 +1113,9 @@ SEC_XI_DISCUSS = ("XII. Discussion", [
     "for ambiguous queries. A fine-tuned smaller model could reduce this overhead. "
     "(5) The evaluation is limited to qualitative pilot testing; a rigorous "
     "controlled study with learning outcome measurements is needed to validate "
-    "educational effectiveness.",
+    "educational effectiveness. (6) The multi-agent debate currently uses a single "
+    "LLM backend for all three personas; using distinct models or temperatures per "
+    "persona could produce more genuinely diverse viewpoints.",
 
     "E. Future Work",
 
@@ -1111,14 +1123,18 @@ SEC_XI_DISCUSS = ("XII. Discussion", [
     "smaller, faster model (e.g., DistilBERT) for intent classification to reduce "
     "latency from the current LLM-based approach. (2) Implementing learning outcome "
     "prediction models that can forecast student performance on upcoming assessments "
-    "based on interaction patterns and mastery trajectories. (3) Adding collaborative "
-    "whiteboarding features using canvas-based drawing tools with real-time "
-    "synchronisation via WebSocket. (4) Supporting multiple LLM backends (OpenAI, "
-    "Anthropic, open-source models) with a provider abstraction layer, eliminating "
-    "single-provider dependency. (5) Conducting longitudinal studies measuring actual "
-    "grade improvements over an academic semester. (6) Implementing advanced memory "
-    "models (DASH, HL) as alternatives to SM-2 for more precise retention "
-    "scheduling. (7) Adding support for collaborative annotation of course materials "
+    "based on interaction patterns, BKT mastery trajectories, and forgetting curve "
+    "projections. (3) Adding collaborative whiteboarding features using canvas-based "
+    "drawing tools with real-time synchronisation via WebSocket. (4) Supporting "
+    "multiple LLM backends (OpenAI, Anthropic, open-source models) with a provider "
+    "abstraction layer, eliminating single-provider dependency. (5) Conducting "
+    "longitudinal studies measuring actual grade improvements over an academic "
+    "semester. (6) Per-student BKT parameter fitting via expectation-maximisation to "
+    "replace global defaults with individually calibrated P(L0), P(T), P(S), P(G). "
+    "(7) Extending the Learning Genome with social learning patterns from study room "
+    "interactions and peer-debate engagement. (8) A peer-debate mode where two "
+    "students argue a question with AI moderation, extending the current AI-only "
+    "debate. (9) Adding support for collaborative annotation of course materials "
     "within study rooms.",
 ])
 
@@ -1126,27 +1142,32 @@ SEC_XII_CONCLUSION = ("XIII. Conclusion", [
     "This paper presented EduAgent, a multi-agent AI educational platform that goes "
     "beyond single-chatbot solutions by providing six specialised agents with "
     "inter-agent collaboration, sharing a unified knowledge layer. The system "
-    "integrates SM-2 spaced repetition with auto-generated flashcards, AI-powered "
-    "study planning, voice-enabled oral examination simulation, multimodal image "
-    "understanding, collaborative study rooms, custom agent building, and "
-    "comprehensive analytics.",
+    "integrates SM-2 spaced repetition with auto-generated flashcards, Bayesian "
+    "Knowledge Tracing with predictive forgetting, a multi-agent debate and consensus "
+    "mode, a per-student cognitive Learning Genome, a Knowledge Frontier that "
+    "operationalises the Zone of Proximal Development, AI-powered study planning, "
+    "voice-enabled oral examination simulation, multimodal image understanding, "
+    "collaborative study rooms, custom agent building, and comprehensive analytics.",
 
     "The key contributions of this work include: a practical implementation of "
     "multi-agent educational architecture with prompt-level inter-agent collaboration; "
-    "seamless integration of spaced repetition algorithms into conversational AI "
-    "workflows; voice and multimodal interaction modalities that extend beyond "
-    "text-only tutoring; real-time collaborative learning features with shared AI "
-    "assistance; and an extensible custom agent framework for professor-defined "
-    "assessment agents.",
+    "Bayesian Knowledge Tracing with Ebbinghaus-based predictive forgetting that "
+    "forecasts per-concept recall decay; a structured multi-agent debate mode for "
+    "calibrated, multi-perspective answers; a behavioural Learning Genome that "
+    "personalises every agent response; a ZPD-based Knowledge Frontier that recommends "
+    "the optimal next concept to study; seamless integration of spaced repetition "
+    "algorithms into conversational AI workflows; voice and multimodal interaction "
+    "modalities; real-time collaborative learning features with shared AI assistance; "
+    "and an extensible custom agent framework for professor-defined assessment agents.",
 
     "The platform is implemented as a production-ready full-stack application with "
-    "60+ automated tests, five-service Docker deployment, multi-stage production "
+    "100+ automated tests, five-service Docker deployment, multi-stage production "
     "Dockerfiles, and extensive documentation including deployment guides, demo "
-    "scripts, and user study protocols. The combination of adaptive learning "
-    "algorithms, multi-agent AI, real-time collaboration features, and comprehensive "
-    "analytics demonstrates the potential for AI-driven educational tools that "
-    "genuinely adapt to individual student needs while providing actionable "
-    "insights for educators.",
+    "scripts, and user study protocols. The combination of theoretically-grounded "
+    "learning models (BKT, Ebbinghaus, Vygotsky), multi-agent AI, real-time "
+    "collaboration features, and comprehensive analytics demonstrates the potential "
+    "for AI-driven educational tools that genuinely adapt to individual student needs "
+    "while providing actionable insights for educators.",
 
     "EduAgent represents a step toward the vision of AI-powered education that is "
     "personalised, adaptive, and collaborative \u2014 moving beyond the limitations "
@@ -1229,11 +1250,11 @@ TABLE_STACK = [
     ["Layer", "Technology", "Version", "Purpose"],
     ["Frontend", "Next.js, TailwindCSS, shadcn/ui", "16.x", "SSR React with modern UI, 19+ pages"],
     ["State Mgmt", "Zustand, React Query", "\u2014", "Client state + server cache sync"],
-    ["Backend", "FastAPI, SQLAlchemy 2.0, asyncpg", "3.11+", "Async API with 15 routers"],
+    ["Backend", "FastAPI, SQLAlchemy 2.0, asyncpg", "3.11+", "Async API with 19 routers"],
     ["LLM", "Google Gemini 2.0 Flash", "\u2014", "Reasoning, assessment, image analysis"],
     ["Orchestration", "LangGraph (LangChain)", "\u2014", "Stateful multi-agent routing graph"],
     ["Vector DB", "Qdrant", "latest", "Cosine similarity search for RAG"],
-    ["Database", "PostgreSQL", "16", "15 tables, 3 Alembic migrations"],
+    ["Database", "PostgreSQL", "16", "16 tables, 4 Alembic migrations"],
     ["Cache", "Redis", "7", "Analytics + RAG query caching (5 min TTL)"],
     ["Embeddings", "all-MiniLM-L6-v2", "\u2014", "384-dim sentence embeddings (local)"],
     ["Real-time", "WebSocket + SSE", "\u2014", "Study rooms + chat streaming"],
@@ -1268,15 +1289,25 @@ TABLE_FEATURES = [
      "Gemini analysis of extracted syllabus content"],
     ["Redis Caching", "Reduced API calls and faster responses",
      "MD5-hashed keys with configurable TTL"],
+    ["Bayesian Knowledge Tracing", "HMM-based per-concept mastery estimation",
+     "BKT posterior update + difficulty-scaled P(T); stored per StudentConcept"],
+    ["Predictive Forgetting", "Ebbinghaus curve forecasts recall decay",
+     "R(t)=exp(-t/S); stability growth on success; proactive review alerts"],
+    ["Multi-Agent Debate", "Proponent/Skeptic/Judge structured debate",
+     "RAG-grounded; SSE-streamed turns; optional rebuttal rounds"],
+    ["Learning Genome", "Per-student cognitive fingerprint",
+     "Behavioural signals + LLM misconception detection; injected into agent prompts"],
+    ["Knowledge Frontier (ZPD)", "Concept graph partitioned by mastery + prereqs",
+     "Mastered/frontier/locked sets; readiness-ranked next-best recommendation"],
 ]
 
 TABLE_COMPARISON = [
-    ["System", "Multi-Agent", "Spaced Rep.", "RAG", "Collaboration", "Voice", "Custom Agents"],
+    ["System", "Multi-Agent", "Spaced Rep.", "RAG", "BKT/Forgetting", "Debate", "ZPD"],
     ["Khanmigo [1]", "No", "No", "Partial", "No", "No", "No"],
-    ["Duolingo Max [2]", "No", "Yes", "No", "No", "Yes", "No"],
-    ["MATHia [3]", "No", "No", "No", "No", "No", "No"],
-    ["ChatGPT", "No", "No", "No", "No", "Yes", "Yes (GPTs)"],
-    ["EduAgent", "Yes (6)", "Yes (SM-2)", "Yes", "Yes", "Yes", "Yes"],
+    ["Duolingo Max [2]", "No", "Yes", "No", "No", "No", "No"],
+    ["MATHia [3]", "No", "Yes (BKT)", "No", "Partial", "No", "No"],
+    ["ChatGPT", "No", "No", "No", "No", "No", "No"],
+    ["EduAgent", "Yes (6+debate)", "Yes (SM-2+BKT)", "Yes", "Yes", "Yes", "Yes"],
 ]
 
 TABLE_DB_SCHEMA = [
@@ -1286,8 +1317,8 @@ TABLE_DB_SCHEMA = [
     ["concepts", "id, name, chapter, difficulty_tier, subject_id", "Topic nodes in concept graph"],
     ["concept_prerequisites", "concept_id, prerequisite_id", "Directed edges in dependency DAG"],
     ["enrollments", "student_id, subject_id", "Student-course associations"],
-    ["student_concepts", "confidence_score, easiness_factor, interval_days, next_review_at",
-     "Per-student mastery state (SM-2)"],
+    ["student_concepts", "confidence_score, easiness_factor, interval_days, bkt_mastery, memory_stability, predicted_forget_at",
+     "Per-student mastery state (SM-2 + BKT + forgetting)"],
     ["conversations", "id, student_id, subject_id", "Chat session containers"],
     ["messages", "id, conversation_id, role, content", "Individual chat messages"],
     ["flashcards", "front, back, easiness_factor, interval_days, next_review_at",
@@ -1304,6 +1335,8 @@ TABLE_DB_SCHEMA = [
      "Collaborative room metadata"],
     ["study_room_members", "room_id, user_id, joined_at",
      "Room membership records"],
+    ["learning_genomes", "student_id, pace_label, pace_score, preferred_modality, persistence, summary",
+     "Per-student cognitive fingerprint (Learning Genome)"],
 ]
 
 TABLE_INTER_AGENT = [
@@ -1326,7 +1359,7 @@ TABLE_INTER_AGENT = [
 SECTION_TABLES = {
     "III. System Architecture": [
         ("TABLE II: Technology Stack", TABLE_STACK),
-        ("TABLE V: Database Schema (15 Tables)", TABLE_DB_SCHEMA),
+        ("TABLE V: Database Schema (16 Tables)", TABLE_DB_SCHEMA),
     ],
     "IV. Agent Design and Orchestration": [
         ("TABLE I: EduAgent Specialised Agents", TABLE_AGENTS),
