@@ -16,6 +16,12 @@ import {
   Network,
   User,
   BookOpen,
+  Brain,
+  CalendarDays,
+  TrendingUp,
+  Users,
+  BarChart3,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -149,6 +155,42 @@ export default function DashboardLayout({
               Concept Map
             </Button>
           </Link>
+          <Link href="/flashcards">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sm"
+            >
+              <Brain className="h-4 w-4" />
+              Flashcards
+            </Button>
+          </Link>
+          <Link href="/study-planner">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sm"
+            >
+              <CalendarDays className="h-4 w-4" />
+              Study Planner
+            </Button>
+          </Link>
+          <Link href="/learning-path">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sm"
+            >
+              <TrendingUp className="h-4 w-4" />
+              Learning Path
+            </Button>
+          </Link>
+          <Link href="/study-groups">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sm"
+            >
+              <Users className="h-4 w-4" />
+              Study Groups
+            </Button>
+          </Link>
         </div>
 
         <Separator />
@@ -198,6 +240,24 @@ export default function DashboardLayout({
                 >
                   <BookOpen className="h-4 w-4" />
                   Manage Subjects
+                </Button>
+              </Link>
+              <Link href="/admin/analytics">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-2 text-sm"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  Analytics
+                </Button>
+              </Link>
+              <Link href="/admin/custom-agents">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-2 text-sm"
+                >
+                  <Bot className="h-4 w-4" />
+                  Custom Agents
                 </Button>
               </Link>
             </>

@@ -28,6 +28,13 @@ from app.models import (
     Conversation,
     Message,
     IngestionJob,
+    Flashcard,
+    AgentLog,
+    LearningEvent,
+    StudyPlan,
+    CustomAgent,
+    StudyRoom,
+    StudyRoomMember,
 )
 
 target_metadata = Base.metadata

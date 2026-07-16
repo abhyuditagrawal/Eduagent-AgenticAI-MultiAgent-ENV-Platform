@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
 
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     # Auth
     JWT_SECRET_KEY: str = "change-me-in-production"
     JWT_ALGORITHM: str = "HS256"

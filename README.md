@@ -18,10 +18,22 @@ EduAgent is designed as a unified learning companion that adapts to each student
 ## Features
 
 - **6 Specialised AI Agents** with automatic intent-based routing
+- **Inter-Agent Collaboration** — agents consult each other's data (weak points, mastery) before responding
 - **Real-time SSE Streaming** for token-by-token LLM responses
 - **Interactive Concept Graph** visualisation with React Flow + dagre layout
 - **Mastery Dashboard** with heatmaps, exam readiness gauge, activity timeline
 - **SM-2 Spaced Repetition** with confidence decay and review nudges
+- **Auto-Generated Flashcards** from conversations with SM-2 review scheduling
+- **Smart Study Planner** — AI-generated personalised study schedules based on mastery + exam dates
+- **Progress Report PDF Export** — downloadable PDF reports with mastery data
+- **Voice Mode** for Viva agent — Web Speech API for speech-to-text input + text-to-speech output
+- **Diagram/Image Understanding** — upload images for Gemini multimodal analysis
+- **Live Study Groups** — WebSocket-based rooms with shared AI assistant
+- **Learning Path Timeline** — chronological visualisation of learning journey
+- **Custom Agent Builder** — admin can create agents with custom prompts and rubrics
+- **Class-Level Analytics** — admin dashboard with aggregated mastery, weak concepts, agent performance
+- **Redis Caching** for RAG queries and analytics
+- **Concept Dependency Auto-Detection** from PDF content using LLM
 - **Multi-turn Modes**: Protege teaching sessions, oral viva exams
 - **Essay Critique** with rubric scoring and structured feedback
 - **Dark Mode** with system preference detection
@@ -45,11 +57,14 @@ EduAgent is designed as a unified learning companion that adapts to each student
 |-------|-----------|
 | Frontend | Next.js 16, TailwindCSS, shadcn/ui v4 (base-ui), Zustand, recharts, React Flow |
 | Backend | FastAPI, Python 3.11+, SQLAlchemy 2.0, Alembic |
-| LLM | Google Gemini 2.0 Flash (free tier) |
+| LLM | Google Gemini 2.0 Flash (free tier, multimodal) |
 | Orchestration | LangGraph |
 | Vector DB | Qdrant |
 | Database | PostgreSQL 16 |
+| Cache | Redis 7 |
 | Embeddings | sentence-transformers (all-MiniLM-L6-v2, local) |
+| Real-time | WebSocket (study groups), SSE (chat streaming) |
+| PDF Generation | ReportLab |
 | Containerisation | Docker Compose |
 
 ## 🏃 Quick Start
@@ -103,23 +118,23 @@ npm run dev
 ├── backend/
 │   ├── app/
 │   │   ├── agents/          # 6 agents + orchestrator + intent classifier
-│   │   ├── models/          # SQLAlchemy models
-│   │   ├── routers/         # FastAPI endpoints
-│   │   ├── services/        # Business logic (auth, streaming, student state)
+│   │   ├── models/          # SQLAlchemy models (user, concept, flashcard, analytics, study)
+│   │   ├── routers/         # FastAPI endpoints (15 routers including WebSocket)
+│   │   ├── services/        # Business logic (auth, streaming, cache, analytics, planner, PDF)
 │   │   ├── rag/             # Vector store + embedding
 │   │   └── schemas/         # Pydantic schemas
-│   ├── alembic/             # Database migrations
+│   ├── alembic/             # Database migrations (3 revisions)
 │   ├── scripts/             # Seed scripts
-│   └── tests/               # pytest test suite
+│   └── tests/               # pytest test suite (60+ tests)
 ├── frontend/
 │   └── src/
-│       ├── app/(dashboard)/ # Pages: chat, dashboard, concept-map, profile, admin
-│       ├── components/      # UI components (chat, dashboard, shared)
+│       ├── app/(dashboard)/ # 13+ pages: chat, dashboard, flashcards, study-planner, etc.
+│       ├── components/      # UI components (chat, dashboard, voice, image upload)
 │       ├── stores/          # Zustand stores
 │       └── lib/             # API client, SSE parser, utils
-├── docs/                    # Deployment guide, capstone report outline
+├── docs/                    # IEEE paper, user study, demo script, deployment guide
 ├── phases/                  # Phase-by-phase build specs
-├── docker-compose.yml       # Development compose
+├── docker-compose.yml       # Development compose (5 services: postgres, qdrant, redis, backend, frontend)
 └── docker-compose.prod.yml  # Production compose
 ```
 

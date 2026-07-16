@@ -97,6 +97,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("gemini_api_key_check_failed", error=str(e))
 
+    # Check Redis connection
+    try:
+        from app.services.cache import get_redis
+        redis_client = await get_redis()
+        if redis_client:
+            await redis_client.ping()
+            logger.info("redis_connected")
+        else:
+            logger.warning("redis_not_available")
+    except Exception as e:
+        logger.warning("redis_connection_failed", error=str(e))
+
     logger.info("startup_complete")
 
     yield
@@ -126,7 +138,11 @@ app.add_middleware(
 )
 
 # Include routers
-from app.routers import auth, subjects, chat, ingestion, concepts, nudges, dashboard
+from app.routers import (
+    auth, subjects, chat, ingestion, concepts, nudges, dashboard,
+    flashcards, analytics, study_planner, progress_report,
+    custom_agents, study_rooms, image_chat, ws_study,
+)
 
 app.include_router(auth.router)
 app.include_router(subjects.router)
@@ -135,6 +151,14 @@ app.include_router(ingestion.router)
 app.include_router(concepts.router)
 app.include_router(nudges.router)
 app.include_router(dashboard.router)
+app.include_router(flashcards.router)
+app.include_router(analytics.router)
+app.include_router(study_planner.router)
+app.include_router(progress_report.router)
+app.include_router(custom_agents.router)
+app.include_router(study_rooms.router)
+app.include_router(image_chat.router)
+app.include_router(ws_study.router)
 
 
 @app.get("/health")

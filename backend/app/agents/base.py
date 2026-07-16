@@ -116,7 +116,13 @@ class BaseAgent:
                 history_text += f"{msg['role']}: {msg['content']}\n"
             history_text += "--- End History ---\n"
 
-        return f"{self.system_prompt}\n{context_text}\n{history_text}\nStudent: {user_message}"
+        # Inter-agent collaboration context
+        inter_agent = state.get("metadata", {}).get("inter_agent_context", "")
+        inter_agent_text = ""
+        if inter_agent:
+            inter_agent_text = f"\n\n--- Cross-Agent Intelligence ---\n{inter_agent}\n--- End Cross-Agent Intelligence ---\n"
+
+        return f"{self.system_prompt}\n{context_text}\n{inter_agent_text}\n{history_text}\nStudent: {user_message}"
 
     async def reason(self, state: AgentState, context: list[dict]) -> str:
         model = get_gemini_model()

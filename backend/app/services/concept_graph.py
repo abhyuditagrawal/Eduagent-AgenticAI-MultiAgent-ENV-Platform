@@ -135,3 +135,96 @@ async def populate_concepts_from_pdf(
     # Use first 5 pages (likely TOC / syllabus)
     syllabus_text = "\n\n".join(p["text"] for p in pages[:5])
     return await extract_concepts_from_syllabus(db, subject_id, syllabus_text)
+
+
+DEPENDENCY_DETECTION_PROMPT = """You are an expert curriculum analyst. Given these text chunks from a course PDF, identify concept dependency relationships.
+
+For each dependency, provide the prerequisite concept and the dependent concept.
+Only include dependencies where understanding the prerequisite is clearly needed for the dependent concept.
+
+Existing concepts in this course: {existing_concepts}
+
+Text from course material:
+{content_text}
+
+Return ONLY a JSON array of dependency edges:
+[
+  {{"prerequisite": "Concept A", "dependent": "Concept B", "reason": "B requires understanding of A because..."}},
+  ...
+]"""
+
+
+async def auto_detect_dependencies(
+    db: AsyncSession, subject_id, content_chunks: list[str]
+) -> list[dict]:
+    """Auto-detect concept dependencies from PDF content using LLM."""
+    # Get existing concepts
+    result = await db.execute(
+        select(Concept).where(Concept.subject_id == subject_id)
+    )
+    concepts = result.scalars().all()
+    concept_names = [c.name for c in concepts]
+    name_to_concept = {c.name: c for c in concepts}
+
+    if not concept_names:
+        return []
+
+    # Use up to 5 chunks of content
+    content_text = "\n\n".join(chunk[:1000] for chunk in content_chunks[:5])
+
+    model = get_gemini_model()
+    prompt = DEPENDENCY_DETECTION_PROMPT.format(
+        existing_concepts=", ".join(concept_names),
+        content_text=content_text,
+    )
+
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.2, max_output_tokens=2048
+            ),
+        )
+        raw = response.text.strip()
+        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+        if json_match:
+            raw = json_match.group(1).strip()
+        edges_data = json.loads(raw)
+    except Exception as e:
+        logger.error("dependency_detection_failed", error=str(e))
+        return []
+
+    added = []
+    for edge in edges_data:
+        prereq = name_to_concept.get(edge.get("prerequisite"))
+        dependent = name_to_concept.get(edge.get("dependent"))
+        if not prereq or not dependent or prereq.id == dependent.id:
+            continue
+
+        # Check if edge already exists
+        existing = await db.execute(
+            select(ConceptPrerequisite).where(
+                ConceptPrerequisite.concept_id == dependent.id,
+                ConceptPrerequisite.prerequisite_id == prereq.id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+
+        new_edge = ConceptPrerequisite(
+            concept_id=dependent.id,
+            prerequisite_id=prereq.id,
+            strength=1.0,
+        )
+        db.add(new_edge)
+        added.append({
+            "prerequisite": prereq.name,
+            "dependent": dependent.name,
+            "reason": edge.get("reason", ""),
+        })
+
+    if added:
+        await db.commit()
+        logger.info("dependencies_auto_detected", count=len(added), subject_id=str(subject_id))
+
+    return added
