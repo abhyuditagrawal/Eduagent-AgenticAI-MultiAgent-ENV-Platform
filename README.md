@@ -144,7 +144,9 @@ npm run dev
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** — System architecture and data models
 - **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)** — Deployment guide (Docker, Railway, VPS)
 - **[docs/CAPSTONE_REPORT_OUTLINE.md](./docs/CAPSTONE_REPORT_OUTLINE.md)** — Suggested report structure
-- **[docs/EduAgent_IEEE_Paper.html](./docs/EduAgent_IEEE_Paper.html)** — IEEE format research paper
+- **[docs/EduAgent_IEEE_Paper.pdf](./docs/EduAgent_IEEE_Paper.pdf)** — IEEE format research paper (PDF)
+- **[docs/EduAgent_IEEE_Paper_v2.html](./docs/EduAgent_IEEE_Paper_v2.html)** — IEEE format research paper (HTML)
+- **[docs/generate_paper.py](./docs/generate_paper.py)** — Paper generator script (run `python docs/generate_paper.py`)
 - **[docs/USER_STUDY.md](./docs/USER_STUDY.md)** — User study protocol, questionnaire, and SUS scoring
 - **[docs/DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md)** — 3–5 minute demo recording script
 - **[docs/SCREENSHOT_GUIDE.md](./docs/SCREENSHOT_GUIDE.md)** — Screenshot capture guide for paper figures
