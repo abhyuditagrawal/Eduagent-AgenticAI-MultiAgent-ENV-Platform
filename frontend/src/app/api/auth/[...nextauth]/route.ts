@@ -12,29 +12,25 @@ export const authOptions: AuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
+        const apiUrl = process.env.BACKEND_URL || "http://backend:8000";
+
         try {
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/auth/login`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                email: credentials.email,
-                password: credentials.password,
-              }),
-            }
-          );
+          const res = await fetch(`${apiUrl}/api/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: credentials.email,
+              password: credentials.password,
+            }),
+          });
 
           if (!res.ok) return null;
 
           const data = await res.json();
 
-          const meRes = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/auth/me`,
-            {
-              headers: { Authorization: `Bearer ${data.access_token}` },
-            }
-          );
+          const meRes = await fetch(`${apiUrl}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${data.access_token}` },
+          });
 
           if (!meRes.ok) return null;
 
@@ -48,7 +44,8 @@ export const authOptions: AuthOptions = {
             accessToken: data.access_token,
             refreshToken: data.refresh_token,
           };
-        } catch {
+        } catch (err) {
+          console.error("[NextAuth] authorize error:", err);
           return null;
         }
       },

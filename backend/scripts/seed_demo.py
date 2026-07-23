@@ -24,8 +24,15 @@ from app.models.user import User
 from app.models.subject import Subject
 from app.models.concept import Concept, ConceptPrerequisite
 from app.models.student import Enrollment, StudentConcept
+import bcrypt
+
 from app.models.chat import Conversation, Message
-from app.services.auth import hash_password
+
+
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
 
 # Demo concepts per subject
 DEMO_CONCEPTS = {
@@ -225,8 +232,7 @@ async def seed_demo():
                         last_seen_at=last_seen,
                         next_review_at=last_seen + timedelta(days=random.randint(1, 14)),
                         easiness_factor=2.5 + random.uniform(-0.5, 0.5),
-                        repetitions=random.randint(0, 5),
-                        sm2_interval=random.randint(1, 30),
+                        interval_days=float(random.randint(1, 30)),
                     )
                     db.add(sc)
 
