@@ -1,3 +1,4 @@
+import re
 from typing import AsyncGenerator
 
 import structlog
@@ -8,6 +9,83 @@ from app.services.llm import get_gemini_model
 from app.rag.retriever import retrieve
 
 logger = structlog.get_logger()
+
+
+def match_concepts_in_text(
+    text: str, student_state: dict, limit: int = 3
+) -> list[str]:
+    """Concept ids whose names appear in the given text, longest name first.
+
+    Used to attribute an assessment to the concepts a question actually covered,
+    so mastery moves on the right rows rather than on an arbitrary selection.
+    """
+    if not text:
+        return []
+
+    lowered = text.lower()
+    matches = [
+        (cid, cdata.get("concept_name", ""))
+        for cid, cdata in student_state.items()
+        if cdata.get("concept_name") and cdata["concept_name"].lower() in lowered
+    ]
+    # Prefer the most specific name when several overlap ("Paging" vs "Demand Paging")
+    matches.sort(key=lambda pair: len(pair[1]), reverse=True)
+    return [cid for cid, _ in matches[:limit]]
+
+
+async def grade_answer(
+    question: str, answer: str, ground_truth: str = ""
+) -> int | None:
+    """Score a student's answer 1-5 with the LLM, or None if it could not be graded.
+
+    Returning None rather than a default keeps an un-gradeable turn from being
+    recorded as if it were real evidence of understanding.
+    """
+    prompt = (
+        "You are grading a student's spoken exam answer.\n\n"
+        f"Question asked:\n{question[-800:]}\n\n"
+        f"Student's answer:\n{answer}\n\n"
+    )
+    if ground_truth:
+        prompt += f"Reference material:\n{ground_truth}\n\n"
+    prompt += (
+        "Rate the answer on a scale of 1-5:\n"
+        "1 = Completely wrong or off-topic\n"
+        "2 = Mostly incorrect with a few relevant points\n"
+        "3 = Roughly correct but superficial or incomplete\n"
+        "4 = Correct with good understanding, minor gaps\n"
+        "5 = Excellent, thorough and precise\n\n"
+        "Respond with ONLY a single integer (1-5), nothing else."
+    )
+
+    try:
+        model = get_gemini_model()
+        resp = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.0, max_output_tokens=256
+            ),
+        )
+        digits = re.search(r"[1-5]", resp.text or "")
+        return int(digits.group()) if digits else None
+    except Exception as e:
+        logger.warning("answer_grading_failed", error=str(e))
+        return None
+
+
+def describe_llm_error(error: Exception) -> str:
+    """Turn an LLM failure into something a student can act on.
+
+    A rate-limit is the common case on the free tier and is worth naming, since
+    "try again" is genuinely the right advice — unlike a generic failure.
+    """
+    text = str(error)
+    if "429" in text or "quota" in text.lower():
+        return (
+            "I've hit the AI provider's rate limit for the moment. "
+            "Please wait about a minute and ask again."
+        )
+    return "I apologize, but I encountered an error while processing your request. Please try again."
 
 
 class BaseAgent:
@@ -80,6 +158,18 @@ class BaseAgent:
         for update in updates:
             yield ("concept_update", update)
 
+        # Report which concepts this turn actually engaged with, so activity
+        # analytics reflect real coverage rather than staying at zero.
+        student_state = state.get("student_state", {})
+        touched_names = [
+            student_state[cid]["concept_name"]
+            for cid in state.get("concept_ids_touched", [])
+            if cid in student_state
+        ]
+        if touched_names:
+            metadata["concepts_touched"] = touched_names
+            yield ("concepts_touched", {"concepts": touched_names})
+
         metadata["concept_updates"] = updates
         state["metadata"] = metadata
 
@@ -142,13 +232,13 @@ class BaseAgent:
                 full_prompt,
                 generation_config=genai.GenerationConfig(
                     temperature=0.7,
-                    max_output_tokens=2048,
+                    max_output_tokens=4096,
                 ),
             )
             return response.text
         except Exception as e:
             logger.error("agent_reason_failed", agent=self.name, error=str(e))
-            return "I apologize, but I encountered an error while processing your request. Please try again."
+            return describe_llm_error(e)
 
     async def _reason_stream(
         self, state: AgentState, context: list[dict]
@@ -161,7 +251,7 @@ class BaseAgent:
                 full_prompt,
                 generation_config=genai.GenerationConfig(
                     temperature=0.7,
-                    max_output_tokens=2048,
+                    max_output_tokens=4096,
                 ),
                 stream=True,
             )
@@ -170,7 +260,7 @@ class BaseAgent:
                     yield chunk.text
         except Exception as e:
             logger.error("agent_stream_failed", agent=self.name, error=str(e))
-            yield "I apologize, but I encountered an error while processing your request."
+            yield describe_llm_error(e)
 
     async def assess_understanding(
         self, state: AgentState, response: str

@@ -22,17 +22,19 @@ class LearningGenome(Base):
         nullable=False,
         unique=True,
     )
+    # Every trait below is nullable: a student with no relevant activity yet has
+    # an genuinely unknown trait, and a default would read as an observed one.
     # Learning pace: slow / average / fast (derived from attempts-to-mastery)
-    pace_label: Mapped[str] = mapped_column(String(20), default="average")
-    pace_score: Mapped[float] = mapped_column(Float, default=0.5)
+    pace_label: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    pace_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Preferred interaction modality (concept_qa / teach_me / viva / exam_prep ...)
-    preferred_modality: Mapped[str] = mapped_column(String(50), default="concept_qa")
+    preferred_modality: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # Optimal study hour of day (0-23) based on activity + performance
-    optimal_hour: Mapped[int] = mapped_column(Integer, default=18)
+    optimal_hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Persistence: how often the student revisits weak concepts (0-1)
-    persistence_score: Mapped[float] = mapped_column(Float, default=0.5)
+    persistence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Average active session length in minutes
-    avg_session_minutes: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_session_minutes: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Recurring misconception patterns + error signatures (LLM-derived)
     misconception_patterns: Mapped[list] = mapped_column(
         JSONB, default=list, server_default="[]"

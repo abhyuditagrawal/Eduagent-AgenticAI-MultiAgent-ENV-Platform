@@ -150,6 +150,15 @@ export default function DashboardLayout({
               Dashboard
             </Button>
           </Link>
+          <Link href="/my-subjects">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 text-sm"
+            >
+              <BookOpen className="h-4 w-4" />
+              My Subjects
+            </Button>
+          </Link>
           <Link href="/concept-map">
             <Button
               variant="ghost"

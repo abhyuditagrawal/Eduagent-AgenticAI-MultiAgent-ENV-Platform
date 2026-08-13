@@ -46,7 +46,9 @@ def classify_intent(state: AgentState) -> AgentState:
             prompt,
             generation_config=genai.GenerationConfig(
                 temperature=0.0,
-                max_output_tokens=20,
+                # The answer is one word, but current models spend output tokens
+                # reasoning first and return nothing at all if cut off mid-thought.
+                max_output_tokens=256,
             ),
         )
         intent = response.text.strip().lower().replace(" ", "_")

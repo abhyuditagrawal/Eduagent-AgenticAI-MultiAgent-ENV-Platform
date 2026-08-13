@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 import structlog
-from sqlalchemy import select, func, case, distinct
+from sqlalchemy import select, func, case, distinct, literal_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.analytics import AgentLog, LearningEvent
@@ -99,15 +99,14 @@ async def get_agent_analytics(db: AsyncSession, days: int = 30) -> dict:
         for row in intent_result.all()
     ]
 
-    # Daily request volume
+    # Daily request volume. The unit must be a SQL literal, not a bound parameter,
+    # or Postgres cannot match the GROUP BY expression to the selected one.
+    day = func.date_trunc(literal_column("'day'"), AgentLog.created_at)
     daily_result = await db.execute(
-        select(
-            func.date_trunc("day", AgentLog.created_at).label("day"),
-            func.count().label("count"),
-        )
+        select(day.label("day"), func.count().label("count"))
         .where(AgentLog.created_at >= cutoff)
-        .group_by(func.date_trunc("day", AgentLog.created_at))
-        .order_by(func.date_trunc("day", AgentLog.created_at))
+        .group_by(day)
+        .order_by(day)
     )
     daily_stats = [
         {"date": str(row.day.date()) if row.day else "", "requests": row.count}

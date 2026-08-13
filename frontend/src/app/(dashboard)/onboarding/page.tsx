@@ -106,6 +106,20 @@ export default function OnboardingPage() {
               <div className="flex justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
+            ) : subjects.length === 0 ? (
+              <Card>
+                <CardContent className="p-6 text-center space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    No subjects yet. Add the subjects you&apos;re studying and
+                    upload your own notes — that material is what your agents
+                    will learn from.
+                  </p>
+                  <Button onClick={() => router.push("/my-subjects")}>
+                    Add My First Subject
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </CardContent>
+              </Card>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {subjects.map((subject) => (
@@ -132,17 +146,28 @@ export default function OnboardingPage() {
               </div>
             )}
 
-            <Button
-              className="w-full"
-              onClick={handleEnroll}
-              disabled={selected.size === 0 || enrolling}
-            >
-              {enrolling ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
-              Continue
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
+            {subjects.length > 0 && (
+              <div className="space-y-2">
+                <Button
+                  className="w-full"
+                  onClick={handleEnroll}
+                  disabled={selected.size === 0 || enrolling}
+                >
+                  {enrolling ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  Continue
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full text-sm"
+                  onClick={() => router.push("/my-subjects")}
+                >
+                  Add a different subject instead
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

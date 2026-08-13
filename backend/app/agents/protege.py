@@ -2,7 +2,7 @@ import re
 
 import structlog
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, match_concepts_in_text
 from app.agents.state import AgentState
 from app.rag.retriever import retrieve
 
@@ -158,7 +158,7 @@ class ProtegeAgent(BaseAgent):
             response = model.generate_content(
                 full_prompt,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.8, max_output_tokens=2048
+                    temperature=0.8, max_output_tokens=4096
                 ),
             )
             return response.text
@@ -202,11 +202,17 @@ class ProtegeAgent(BaseAgent):
         else:
             quality = 1
 
-        # Find concept ID
-        target_concept = agent_ctx.get("target_concept", "")
+        # Attribute the score to whatever the student actually taught. Reading a
+        # target_concept from the context would never match — nothing sets it.
         student_state = state.get("student_state", {})
-        for cid, cdata in student_state.items():
-            if cdata.get("concept_name", "").lower() == target_concept.lower():
-                return [{"concept_id": cid, "quality": quality}]
+        taught_text = " ".join(
+            msg["content"]
+            for msg in state.get("conversation_history", [])
+            if msg["role"] == "user"
+        )
+        concept_ids = match_concepts_in_text(taught_text, student_state)
+        if not concept_ids:
+            return []
 
-        return []
+        state["concept_ids_touched"] = concept_ids
+        return [{"concept_id": cid, "quality": quality} for cid in concept_ids]

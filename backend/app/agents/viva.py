@@ -2,7 +2,7 @@ import re
 
 import structlog
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, grade_answer, match_concepts_in_text
 from app.agents.state import AgentState
 from app.rag.retriever import retrieve
 
@@ -187,7 +187,7 @@ class VivaAgent(BaseAgent):
             response = model.generate_content(
                 full_prompt,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.7, max_output_tokens=2048
+                    temperature=0.7, max_output_tokens=4096
                 ),
             )
             return response.text
@@ -198,40 +198,55 @@ class VivaAgent(BaseAgent):
     async def assess_understanding(
         self, state: AgentState, response: str
     ) -> list[dict]:
-        agent_ctx = state.get("metadata", {}).get("agent_context", {})
-        current_question = agent_ctx.get("current_question_index", 0)
-        max_questions = agent_ctx.get("max_questions", 8)
+        """Grade each answer as it is given, against the concept it covered.
 
+        A viva is a sequence of graded answers, so every substantive reply is real
+        evidence. Waiting for a final summary would mean most sessions never
+        record anything at all.
+        """
+        student_state = state.get("student_state", {})
         messages = state.get("messages", [])
-        user_message = messages[-1] if isinstance(messages[-1], str) else messages[-1].get("content", "")
-
-        should_evaluate = (
-            current_question >= max_questions
-            or any(kw in user_message.lower() for kw in ["end viva", "stop viva", "finish viva"])
-        )
-
-        if not should_evaluate:
+        if not messages or not student_state:
             return []
 
-        # Extract scores from evaluation table
-        updates = []
-        student_state = state.get("student_state", {})
+        user_message = (
+            messages[-1]
+            if isinstance(messages[-1], str)
+            else messages[-1].get("content", "")
+        )
 
-        # Try to extract overall grade
-        grade_match = re.search(r"\*\*Overall Grade\*\*:\s*([A-F])", response)
-        grade_to_quality = {"A": 5, "B": 4, "C": 3, "D": 2, "F": 1}
+        # The previous assistant turn holds the question being answered.
+        question = ""
+        for msg in reversed(state.get("conversation_history", [])[:-1]):
+            if msg["role"] == "assistant":
+                question = msg["content"]
+                break
 
-        if grade_match:
-            quality = grade_to_quality.get(grade_match.group(1), 3)
-        else:
-            quality = 3
+        # Nothing to grade before the first question, or on a throwaway reply.
+        if not question or len(user_message.split()) < 5:
+            return []
 
-        # Apply quality to all concepts mentioned in priority list
-        priority_concepts = agent_ctx.get("priority_concepts", [])
-        for cid, cdata in student_state.items():
-            cname = cdata.get("concept_name", "")
-            if cname in priority_concepts:
-                updates.append({"concept_id": cid, "quality": quality})
+        ground_truth = "\n".join(
+            c.get("text", "")[:300] for c in state.get("rag_context", [])[:3]
+        )
+        quality = await grade_answer(question, user_message, ground_truth)
+        if quality is None:
+            return []
 
-        # Limit to prevent over-updating
-        return updates[:10]
+        # Attribute the score to the concepts the question was about, falling back
+        # to the student's weakest concepts when the question names none.
+        concept_ids = match_concepts_in_text(question, student_state)
+        if not concept_ids:
+            concept_ids = [
+                cid
+                for cid, _ in sorted(
+                    student_state.items(),
+                    key=lambda kv: kv[1].get("confidence", 0),
+                )[:1]
+            ]
+
+        state["concept_ids_touched"] = concept_ids
+        logger.info(
+            "viva_answer_graded", quality=quality, concepts=len(concept_ids)
+        )
+        return [{"concept_id": cid, "quality": quality} for cid in concept_ids]

@@ -3,21 +3,17 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text, select
+from sqlalchemy import text
 
 from app.config import get_settings
-from app.database import engine, async_session
-from app.models.subject import Subject
+from app.database import engine
 
 settings = get_settings()
 logger = structlog.get_logger()
 
-SEED_SUBJECTS = [
-    {"code": "MSA", "name": "Microservices Architecture", "description": "Design and implementation of microservices-based systems"},
-    {"code": "HCI", "name": "Human-Computer Interaction", "description": "Principles of user interface design and usability"},
-    {"code": "CS", "name": "Cyber Security", "description": "Information security, cryptography, and network defense"},
-    {"code": "ML", "name": "Machine Learning", "description": "Supervised, unsupervised, and reinforcement learning algorithms"},
-]
+
+# Arbitrary constant identifying the migration lock across workers.
+MIGRATION_LOCK_ID = 727_314_001
 
 
 async def run_migrations():
@@ -25,7 +21,17 @@ async def run_migrations():
     import os
 
     alembic_ini = os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini")
-    if os.path.exists(alembic_ini):
+    if not os.path.exists(alembic_ini):
+        logger.warning("alembic_ini_not_found", path=alembic_ini)
+        return
+
+    # Every uvicorn worker runs this lifespan, so without a lock they race each
+    # other and all but one fail. Serialise them on a Postgres advisory lock:
+    # the winner migrates, the rest find the schema already at head.
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("SELECT pg_advisory_lock(:lock_id)"), {"lock_id": MIGRATION_LOCK_ID}
+        )
         try:
             subprocess.run(
                 ["alembic", "upgrade", "head"],
@@ -36,22 +42,12 @@ async def run_migrations():
             )
             logger.info("migrations_applied")
         except subprocess.CalledProcessError as e:
-            logger.warning("migration_failed", error=e.stderr)
-    else:
-        logger.warning("alembic_ini_not_found", path=alembic_ini)
-
-
-async def seed_subjects():
-    async with async_session() as db:
-        for subj_data in SEED_SUBJECTS:
-            result = await db.execute(
-                select(Subject).where(Subject.code == subj_data["code"])
+            logger.error("migration_failed", error=e.stderr)
+        finally:
+            await conn.execute(
+                text("SELECT pg_advisory_unlock(:lock_id)"),
+                {"lock_id": MIGRATION_LOCK_ID},
             )
-            if not result.scalar_one_or_none():
-                subject = Subject(**subj_data)
-                db.add(subject)
-                logger.info("subject_seeded", code=subj_data["code"])
-        await db.commit()
 
 
 @asynccontextmanager
@@ -75,9 +71,6 @@ async def lifespan(app: FastAPI):
     # Run migrations
     await run_migrations()
 
-    # Seed subjects
-    await seed_subjects()
-
     # Check Qdrant connection
     try:
         from app.rag.vector_store import get_qdrant_client
@@ -91,9 +84,9 @@ async def lifespan(app: FastAPI):
     try:
         import google.generativeai as genai
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel(settings.GEMINI_MODEL)
         model.count_tokens("test")
-        logger.info("gemini_api_key_valid")
+        logger.info("gemini_api_key_valid", model=settings.GEMINI_MODEL)
     except Exception as e:
         logger.warning("gemini_api_key_check_failed", error=str(e))
 

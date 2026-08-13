@@ -45,7 +45,7 @@ async def generate_flashcards_from_conversation(
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
-                temperature=0.3, max_output_tokens=2048
+                temperature=0.3, max_output_tokens=4096
             ),
         )
         raw = response.text.strip()

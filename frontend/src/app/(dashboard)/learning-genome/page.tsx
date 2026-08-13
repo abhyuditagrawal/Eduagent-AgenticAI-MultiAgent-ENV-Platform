@@ -19,19 +19,23 @@ import api from "@/lib/api";
 import { toast } from "sonner";
 
 interface Genome {
-  pace_label: string;
-  pace_score: number;
-  preferred_modality: string;
-  preferred_modality_label: string;
-  optimal_hour: number;
-  persistence_score: number;
-  avg_session_minutes: number;
+  // A trait stays null until there is enough real activity to measure it.
+  pace_label: string | null;
+  pace_score: number | null;
+  preferred_modality: string | null;
+  preferred_modality_label: string | null;
+  optimal_hour: number | null;
+  persistence_score: number | null;
+  avg_session_minutes: number | null;
   misconception_patterns: string[];
   strengths: string[];
   summary: string;
   data_points: number;
   updated_at: string | null;
 }
+
+// Shown in place of a trait that has no supporting activity yet.
+const NOT_ENOUGH_DATA = "Not enough data yet";
 
 export default function LearningGenomePage() {
   const { data: session } = useSession();
@@ -75,11 +79,17 @@ export default function LearningGenomePage() {
       ? "text-orange-500"
       : "text-blue-500";
 
-  const fmtHour = (h: number) => {
+  const fmtHour = (h: number | null) => {
+    if (h === null || h === undefined) return NOT_ENOUGH_DATA;
     const period = h >= 12 ? "PM" : "AM";
     const hr = h % 12 === 0 ? 12 : h % 12;
     return `${hr}:00 ${period}`;
   };
+
+  const fmtPercent = (value: number | null) =>
+    value === null || value === undefined
+      ? NOT_ENOUGH_DATA
+      : `${Math.round(value * 100)}%`;
 
   return (
     <div className="flex flex-col h-full overflow-auto p-6 space-y-6">
@@ -134,11 +144,13 @@ export default function LearningGenomePage() {
               </CardHeader>
               <CardContent>
                 <p className={`text-2xl font-bold capitalize ${paceColor}`}>
-                  {genome.pace_label}
+                  {genome.pace_label ?? NOT_ENOUGH_DATA}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  Score {Math.round(genome.pace_score * 100)}/100
-                </p>
+                {genome.pace_score !== null && (
+                  <p className="text-xs text-muted-foreground">
+                    Score {Math.round(genome.pace_score * 100)}/100
+                  </p>
+                )}
               </CardContent>
             </Card>
             <Card>
@@ -149,7 +161,7 @@ export default function LearningGenomePage() {
               </CardHeader>
               <CardContent>
                 <p className="text-lg font-semibold capitalize">
-                  {genome.preferred_modality_label}
+                  {genome.preferred_modality_label ?? NOT_ENOUGH_DATA}
                 </p>
               </CardContent>
             </Card>
@@ -160,7 +172,7 @@ export default function LearningGenomePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{fmtHour(genome.optimal_hour)}</p>
+                <p className="text-xl font-bold">{fmtHour(genome.optimal_hour)}</p>
                 <p className="text-xs text-muted-foreground">Most active study time</p>
               </CardContent>
             </Card>
@@ -171,8 +183,8 @@ export default function LearningGenomePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">
-                  {Math.round(genome.persistence_score * 100)}%
+                <p className="text-xl font-bold">
+                  {fmtPercent(genome.persistence_score)}
                 </p>
                 <p className="text-xs text-muted-foreground">Revisits weak topics</p>
               </CardContent>

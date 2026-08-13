@@ -37,7 +37,7 @@ async def analyze_image(
 
     # Configure Gemini for multimodal
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel(settings.GEMINI_MODEL)
 
     system_context = ""
     if subject_context:
@@ -61,7 +61,7 @@ async def analyze_image(
         response = model.generate_content(
             [prompt, image_part],
             generation_config=genai.GenerationConfig(
-                temperature=0.5, max_output_tokens=2048
+                temperature=0.5, max_output_tokens=4096
             ),
         )
         return {

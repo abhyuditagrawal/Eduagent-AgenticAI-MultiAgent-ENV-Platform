@@ -70,7 +70,7 @@ class ConceptQAAgent(BaseAgent):
                         concept_list=", ".join(concept_names),
                     ),
                     generation_config=genai.GenerationConfig(
-                        temperature=0.0, max_output_tokens=200
+                        temperature=0.0, max_output_tokens=1024
                     ),
                 )
                 raw = response.text.strip()
@@ -141,7 +141,7 @@ class ConceptQAAgent(BaseAgent):
             response = model.generate_content(
                 full_prompt,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.7, max_output_tokens=2048
+                    temperature=0.7, max_output_tokens=4096
                 ),
             )
             return response.text
@@ -214,7 +214,9 @@ class ConceptQAAgent(BaseAgent):
             resp = model.generate_content(
                 assess_prompt,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.0, max_output_tokens=5
+                    # A single digit, but current models reason before answering
+                    # and return nothing if the budget stops them mid-thought.
+                    temperature=0.0, max_output_tokens=256
                 ),
             )
             score_text = resp.text.strip()

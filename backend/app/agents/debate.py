@@ -86,7 +86,7 @@ async def _generate(prompt: str, temperature: float = 0.7) -> str:
         resp = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
-                temperature=temperature, max_output_tokens=1024
+                temperature=temperature, max_output_tokens=2048
             ),
         )
         return resp.text.strip()

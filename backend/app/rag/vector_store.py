@@ -66,11 +66,13 @@ def search(
     if collection_name not in existing_names:
         return []
 
-    results = client.search(
+    # query_points replaced the removed search() in qdrant-client 1.x
+    results = client.query_points(
         collection_name=collection_name,
-        query_vector=query_embedding,
+        query=query_embedding,
         limit=top_k,
-    )
+        with_payload=True,
+    ).points
 
     return [
         {

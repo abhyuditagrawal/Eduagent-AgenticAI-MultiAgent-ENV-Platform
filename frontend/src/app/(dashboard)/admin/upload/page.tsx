@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
 import { Upload, FileText, CheckCircle2, XCircle, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +27,6 @@ interface IngestionJob {
 
 export default function UploadPage() {
   const { data: session } = useSession();
-  const router = useRouter();
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState("");
   const [jobs, setJobs] = useState<IngestionJob[]>([]);
@@ -36,13 +34,10 @@ export default function UploadPage() {
   const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
-    if (session?.user?.role !== "admin") {
-      router.push("/chat");
-      return;
-    }
+    if (!session?.accessToken) return;
     loadSubjects();
     loadJobs();
-  }, [session, router]);
+  }, [session]);
 
   const loadSubjects = async () => {
     try {

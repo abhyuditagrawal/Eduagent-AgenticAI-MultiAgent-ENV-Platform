@@ -32,6 +32,7 @@ from app.services.conversation_context import (
     get_active_mode,
 )
 from app.services.learning_genome import get_genome_summary
+from app.services.agent_analytics import log_agent_invocation, log_learning_event
 
 logger = structlog.get_logger()
 
@@ -317,6 +318,8 @@ async def chat_stream(
         full_response = ""
         agent_type = "unknown"
         all_metadata: dict = {}
+        done_data: dict = {}
+        stream_error: str | None = None
 
         try:
             async for event_type, event_data in stream_agent_response(initial_state):
@@ -330,8 +333,13 @@ async def chat_stream(
                     all_metadata["rag_sources"] = event_data.get("sources", [])
                 elif event_type == "concept_update":
                     all_metadata.setdefault("confidence_updates", []).append(event_data)
+                elif event_type == "concepts_touched":
+                    all_metadata["concepts_touched"] = event_data.get("concepts", [])
+                elif event_type == "error":
+                    stream_error = event_data.get("message", "unknown error")
                 elif event_type == "done":
                     event_data["conversation_id"] = str(conversation.id)
+                    done_data = event_data
 
                 yield f"event: {event_type}\ndata: {json.dumps(event_data)}\n\n"
 
@@ -360,6 +368,47 @@ async def chat_stream(
                     )
                 except Exception:
                     pass
+
+            # Record the real invocation so agent analytics and the learning path
+            # are built from actual usage.
+            try:
+                await log_agent_invocation(
+                    db,
+                    student_id=current_user.id,
+                    conversation_id=conversation.id,
+                    agent_type=agent_type,
+                    intent=all_metadata.get("intent") or "general",
+                    response_time_ms=done_data.get("response_time_ms", 0),
+                    rag_chunks_used=done_data.get("rag_chunks_used", 0),
+                    success=stream_error is None,
+                    error_message=stream_error,
+                )
+                await log_learning_event(
+                    db,
+                    student_id=current_user.id,
+                    event_type="agent_interaction",
+                    subject_id=subject_id,
+                    agent_type=agent_type,
+                    data={
+                        "intent": all_metadata.get("intent") or "general",
+                        "concepts_touched": all_metadata.get("concepts_touched", []),
+                        "rag_chunks_used": done_data.get("rag_chunks_used", 0),
+                        "question": data.message[:200],
+                    },
+                )
+                for update in all_metadata.get("confidence_updates", []):
+                    await log_learning_event(
+                        db,
+                        student_id=current_user.id,
+                        event_type="concept_assessed",
+                        concept_id=uuid.UUID(update["concept_id"]),
+                        subject_id=subject_id,
+                        agent_type=agent_type,
+                        data={"quality": update.get("quality")},
+                    )
+                await db.commit()
+            except Exception as e:
+                logger.warning("analytics_logging_failed", error=str(e))
 
             # Update conversation agent context for multi-turn modes
             if agent_type in ("protege", "viva"):

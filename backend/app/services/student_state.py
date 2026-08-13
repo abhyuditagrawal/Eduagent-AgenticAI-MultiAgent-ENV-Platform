@@ -35,7 +35,61 @@ def sm2_update(quality: int, easiness: float, interval: float, repetitions: int)
     return new_easiness, new_interval, new_repetitions
 
 
+async def sync_student_concepts(db: AsyncSession, subject_id, student_id=None) -> int:
+    """Create missing StudentConcept rows so tracking survives any ordering of
+    enrol / upload / concept-generation.
+
+    Concepts can appear after a student enrols (e.g. a PDF is ingested later), and
+    without this the student would have no rows to track and every dashboard would
+    stay empty forever. Pass student_id to sync one student, otherwise all enrolled.
+    """
+    from app.models.student import Enrollment
+
+    concept_result = await db.execute(
+        select(Concept.id).where(Concept.subject_id == subject_id)
+    )
+    concept_ids = [row[0] for row in concept_result.all()]
+    if not concept_ids:
+        return 0
+
+    if student_id is not None:
+        student_ids = [student_id]
+    else:
+        enrolled = await db.execute(
+            select(Enrollment.student_id).where(Enrollment.subject_id == subject_id)
+        )
+        student_ids = [row[0] for row in enrolled.all()]
+    if not student_ids:
+        return 0
+
+    existing_result = await db.execute(
+        select(StudentConcept.student_id, StudentConcept.concept_id).where(
+            StudentConcept.student_id.in_(student_ids),
+            StudentConcept.concept_id.in_(concept_ids),
+        )
+    )
+    existing = {(row[0], row[1]) for row in existing_result.all()}
+
+    created = 0
+    for sid in student_ids:
+        for cid in concept_ids:
+            if (sid, cid) not in existing:
+                db.add(StudentConcept(student_id=sid, concept_id=cid))
+                created += 1
+
+    if created:
+        await db.commit()
+        logger.info(
+            "student_concepts_synced", subject_id=str(subject_id), created=created
+        )
+    return created
+
+
 async def get_student_state(db: AsyncSession, student_id, subject_id) -> dict:
+    # Safety net: make sure this student has a row for every concept in the subject
+    # before we read, so concepts added after enrolment still get tracked.
+    await sync_student_concepts(db, subject_id, student_id)
+
     result = await db.execute(
         select(StudentConcept, Concept)
         .join(Concept, StudentConcept.concept_id == Concept.id)
@@ -144,6 +198,7 @@ async def get_weak_concepts(
             "confidence": sc.confidence_score,
             "difficulty_tier": concept.difficulty_tier,
             "chapter": concept.chapter,
+            "last_seen": sc.last_seen_at.isoformat() if sc.last_seen_at else None,
         }
         for sc, concept in rows
     ]

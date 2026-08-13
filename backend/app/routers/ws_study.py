@@ -130,7 +130,7 @@ async def study_room_ws(websocket: WebSocket, room_id: str):
                     response = model.generate_content(
                         prompt,
                         generation_config=genai.GenerationConfig(
-                            temperature=0.7, max_output_tokens=1024
+                            temperature=0.7, max_output_tokens=2048
                         ),
                     )
                     ai_msg = {

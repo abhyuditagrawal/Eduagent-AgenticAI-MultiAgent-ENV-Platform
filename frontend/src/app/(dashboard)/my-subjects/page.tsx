@@ -1,0 +1,490 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import {
+  Plus,
+  Upload,
+  FileText,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Loader2,
+  Network,
+  MessageSquare,
+  BookOpen,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import api from "@/lib/api";
+import { toast } from "sonner";
+
+interface SubjectData {
+  id: string;
+  name: string;
+  code: string;
+  description: string | null;
+}
+
+interface ConceptData {
+  id: string;
+  name: string;
+  chapter: string | null;
+  difficulty_tier: number;
+}
+
+interface IngestionJob {
+  id: string;
+  subject_id: string;
+  filename: string;
+  status: string;
+  chunks: number;
+  error: string | null;
+  created_at: string;
+}
+
+const POLL_INTERVAL_MS = 3000;
+
+export default function MySubjectsPage() {
+  const { data: session } = useSession();
+  const router = useRouter();
+
+  const [subjects, setSubjects] = useState<SubjectData[]>([]);
+  const [activeSubject, setActiveSubject] = useState<SubjectData | null>(null);
+  const [concepts, setConcepts] = useState<ConceptData[]>([]);
+  const [jobs, setJobs] = useState<IngestionJob[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const [isUploading, setIsUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const [syllabus, setSyllabus] = useState("");
+  const [generating, setGenerating] = useState(false);
+
+  const loadSubjects = useCallback(async () => {
+    try {
+      const res = await api.get("/api/subjects/enrolled");
+      setSubjects(res.data);
+      setActiveSubject((current) => current ?? res.data[0] ?? null);
+    } catch {
+      toast.error("Failed to load your subjects");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadSubjectDetail = useCallback(async (subjectId: string) => {
+    try {
+      const [conceptRes, jobRes] = await Promise.all([
+        api.get(`/api/concepts/${subjectId}`),
+        api.get("/api/ingest/jobs"),
+      ]);
+      setConcepts(conceptRes.data);
+      setJobs(
+        jobRes.data.filter((j: IngestionJob) => j.subject_id === subjectId)
+      );
+    } catch {
+      // Detail panels degrade to empty rather than blocking the page
+    }
+  }, []);
+
+  useEffect(() => {
+    if (session?.accessToken) loadSubjects();
+  }, [session?.accessToken, loadSubjects]);
+
+  useEffect(() => {
+    if (activeSubject) loadSubjectDetail(activeSubject.id);
+  }, [activeSubject, loadSubjectDetail]);
+
+  // While a PDF is being processed, keep refreshing so concepts appear as soon
+  // as ingestion finishes building them.
+  const hasRunningJob = jobs.some(
+    (j) => j.status === "pending" || j.status === "processing"
+  );
+  useEffect(() => {
+    if (!hasRunningJob || !activeSubject) return;
+    const timer = setInterval(
+      () => loadSubjectDetail(activeSubject.id),
+      POLL_INTERVAL_MS
+    );
+    return () => clearInterval(timer);
+  }, [hasRunningJob, activeSubject, loadSubjectDetail]);
+
+  const handleCreate = async () => {
+    if (!newCode.trim() || !newName.trim()) return;
+    setCreating(true);
+    try {
+      const res = await api.post("/api/subjects", {
+        code: newCode.trim(),
+        name: newName.trim(),
+        description: newDesc.trim() || null,
+      });
+      toast.success(`Created ${res.data.name} — upload your notes to get started`);
+      setDialogOpen(false);
+      setNewCode("");
+      setNewName("");
+      setNewDesc("");
+      await loadSubjects();
+      setActiveSubject(res.data);
+    } catch (err: unknown) {
+      const detail =
+        typeof err === "object" && err !== null && "response" in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data
+              ?.detail
+          : undefined;
+      toast.error(detail || "Failed to create subject");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const uploadFile = useCallback(
+    async (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".pdf")) {
+        toast.error("Only PDF files are accepted");
+        return;
+      }
+      if (!activeSubject) {
+        toast.error("Create or select a subject first");
+        return;
+      }
+
+      setIsUploading(true);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("subject_id", activeSubject.id);
+
+      try {
+        await api.post("/api/ingest/upload", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        toast.success(
+          `Uploaded ${file.name} — extracting text and building your concept map`
+        );
+        loadSubjectDetail(activeSubject.id);
+      } catch {
+        toast.error("Upload failed");
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [activeSubject, loadSubjectDetail]
+  );
+
+  const handleGenerateFromSyllabus = async () => {
+    if (!activeSubject || !syllabus.trim()) return;
+    setGenerating(true);
+    try {
+      const res = await api.post(`/api/concepts/${activeSubject.id}/populate`, {
+        syllabus_text: syllabus.trim(),
+      });
+      toast.success(`Added ${res.data.count} concepts`);
+      setSyllabus("");
+      loadSubjectDetail(activeSubject.id);
+    } catch {
+      toast.error("Could not extract concepts from that text");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case "completed":
+        return (
+          <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+            <CheckCircle2 className="h-3 w-3 mr-1" />
+            Completed
+          </Badge>
+        );
+      case "failed":
+        return (
+          <Badge variant="destructive">
+            <XCircle className="h-3 w-3 mr-1" />
+            Failed
+          </Badge>
+        );
+      case "processing":
+        return (
+          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            Processing
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="secondary">
+            <Clock className="h-3 w-3 mr-1" />
+            Pending
+          </Badge>
+        );
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const createDialog = (
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <DialogTrigger>
+        <Button>
+          <Plus className="h-4 w-4 mr-2" />
+          New Subject
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add a subject you&apos;re studying</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-2">
+          <Input
+            placeholder="Short code (e.g. DBMS)"
+            value={newCode}
+            onChange={(e) => setNewCode(e.target.value)}
+          />
+          <Input
+            placeholder="Subject name (e.g. Database Management Systems)"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+          />
+          <Input
+            placeholder="Description (optional)"
+            value={newDesc}
+            onChange={(e) => setNewDesc(e.target.value)}
+          />
+          <Button
+            className="w-full"
+            onClick={handleCreate}
+            disabled={creating || !newCode.trim() || !newName.trim()}
+          >
+            {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Create Subject
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
+  if (subjects.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full p-6">
+        <div className="max-w-md text-center space-y-4">
+          <BookOpen className="h-12 w-12 mx-auto text-primary" />
+          <h2 className="text-2xl font-semibold">Start with your first subject</h2>
+          <p className="text-muted-foreground">
+            Add a subject you&apos;re studying, then upload your own notes or
+            textbook PDFs. EduAgent reads them, builds your concept map, and every
+            agent answers from your material.
+          </p>
+          <div className="flex justify-center">{createDialog}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto space-y-6 overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">My Subjects</h1>
+          <p className="text-sm text-muted-foreground">
+            Upload your own material — everything the agents know comes from it.
+          </p>
+        </div>
+        {createDialog}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {subjects.map((subject) => (
+          <Button
+            key={subject.id}
+            variant={activeSubject?.id === subject.id ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveSubject(subject)}
+          >
+            {subject.name}
+            <span className="ml-2 opacity-60 text-xs">{subject.code}</span>
+          </Button>
+        ))}
+      </div>
+
+      {activeSubject && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">
+                Upload material for {activeSubject.name}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div
+                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                  dragOver
+                    ? "border-primary bg-primary/5"
+                    : "border-muted-foreground/25 hover:border-muted-foreground/50"
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) uploadFile(file);
+                }}
+              >
+                <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                <p className="text-sm text-muted-foreground mb-2">
+                  Drag &amp; drop your lecture notes or textbook PDF, or
+                </p>
+                <Button
+                  variant="outline"
+                  disabled={isUploading}
+                  onClick={() => document.getElementById("file-upload")?.click()}
+                >
+                  {isUploading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileText className="h-4 w-4 mr-2" />
+                  )}
+                  Browse Files
+                </Button>
+                <input
+                  id="file-upload"
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadFile(file);
+                  }}
+                  className="hidden"
+                />
+              </div>
+
+              {jobs.length > 0 && (
+                <div className="space-y-3 mt-4">
+                  {jobs.map((job) => (
+                    <div
+                      key={job.id}
+                      className="flex items-center justify-between p-3 rounded-md border"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {job.filename}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {job.chunks > 0 && `${job.chunks} chunks · `}
+                            {new Date(job.created_at).toLocaleString()}
+                          </p>
+                          {job.error && (
+                            <p className="text-xs text-destructive">{job.error}</p>
+                          )}
+                        </div>
+                      </div>
+                      {statusBadge(job.status)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">
+                Concepts found in your material ({concepts.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {concepts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {hasRunningJob
+                    ? "Reading your upload and extracting concepts…"
+                    : "No concepts yet. Upload a PDF above, or paste your syllabus below."}
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {concepts.map((concept) => (
+                    <Badge key={concept.id} variant="secondary">
+                      {concept.name}
+                      {concept.chapter && (
+                        <span className="ml-1 opacity-60">
+                          · {concept.chapter}
+                        </span>
+                      )}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-2 pt-2">
+                <label className="text-sm font-medium">
+                  Or paste your syllabus / unit list
+                </label>
+                <Textarea
+                  rows={4}
+                  placeholder="Unit 1: Normalisation, ER Modelling…"
+                  value={syllabus}
+                  onChange={(e) => setSyllabus(e.target.value)}
+                />
+                <Button
+                  variant="outline"
+                  onClick={handleGenerateFromSyllabus}
+                  disabled={generating || !syllabus.trim()}
+                >
+                  {generating ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : null}
+                  Extract Concepts
+                </Button>
+              </div>
+
+              {concepts.length > 0 && (
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push("/concept-map")}
+                  >
+                    <Network className="h-3.5 w-3.5 mr-1" />
+                    View Concept Map
+                  </Button>
+                  <Button size="sm" onClick={() => router.push("/chat")}>
+                    <MessageSquare className="h-3.5 w-3.5 mr-1" />
+                    Ask the Agents
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}

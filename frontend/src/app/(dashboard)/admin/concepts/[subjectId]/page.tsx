@@ -76,11 +76,22 @@ export default function AdminConceptsPage() {
     if (!newConceptName.trim()) return;
     setAdding(true);
     try {
-      // This would need a backend endpoint — for now use a simple approach
-      toast.info("Manual concept addition requires the populate endpoint. Use syllabus text instead.");
+      await api.post(`/api/concepts/${subjectId}`, {
+        name: newConceptName.trim(),
+        chapter: newConceptChapter.trim() || null,
+      });
+      toast.success(`Added ${newConceptName.trim()}`);
       setAddDialogOpen(false);
-    } catch {
-      toast.error("Failed to add concept");
+      setNewConceptName("");
+      setNewConceptChapter("");
+      loadConcepts();
+    } catch (err: unknown) {
+      const detail =
+        typeof err === "object" && err !== null && "response" in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data
+              ?.detail
+          : undefined;
+      toast.error(detail || "Failed to add concept");
     } finally {
       setAdding(false);
     }

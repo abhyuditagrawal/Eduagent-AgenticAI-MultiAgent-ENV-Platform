@@ -16,7 +16,7 @@ def get_gemini_model():
     global _model
     if _model is None:
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        _model = genai.GenerativeModel("gemini-2.0-flash")
+        _model = genai.GenerativeModel(settings.GEMINI_MODEL)
     return _model
 
 
@@ -71,7 +71,7 @@ async def generate_response(
                 full_prompt,
                 generation_config=genai.GenerationConfig(
                     temperature=0.7,
-                    max_output_tokens=2048,
+                    max_output_tokens=4096,
                 ),
             )
             return response.text
@@ -97,7 +97,7 @@ async def generate_response_stream(
             full_prompt,
             generation_config=genai.GenerationConfig(
                 temperature=0.7,
-                max_output_tokens=2048,
+                max_output_tokens=4096,
             ),
             stream=True,
         )

@@ -11,14 +11,16 @@ import google.generativeai as genai
 
 logger = structlog.get_logger()
 
-CONCEPT_EXTRACTION_PROMPT = """You are an expert curriculum designer. Given the following syllabus for the subject "{subject_name}", extract all distinct concepts/topics.
+CONCEPT_EXTRACTION_PROMPT = """You are an expert curriculum designer. Given the following syllabus for the subject "{subject_name}", extract the distinct concepts/topics.
 
 For each concept, provide:
-1. name: A concise concept name
-2. description: A 1-2 sentence description
+1. name: A concise concept name (max 5 words)
+2. description: ONE short sentence, max 15 words
 3. difficulty_tier: 1 (foundational), 2 (intermediate), or 3 (advanced)
 4. chapter: Which chapter/module it belongs to
 5. prerequisites: List of other concept names from this list that must be understood first
+
+Extract at most {max_concepts} concepts. Keep descriptions terse — the response must be complete valid JSON, never truncated.
 
 Return ONLY a JSON array with no extra text. Example:
 [
@@ -28,6 +30,43 @@ Return ONLY a JSON array with no extra text. Example:
 
 Syllabus:
 {syllabus_text}"""
+
+# Enough headroom for MAX_CONCEPTS terse entries plus any model preamble.
+CONCEPT_OUTPUT_TOKENS = 16384
+MAX_CONCEPTS = 40
+
+
+def _parse_concept_json(raw_text: str) -> list[dict]:
+    """Parse the model's JSON array, salvaging a response cut off by the token limit.
+
+    A truncated response is still valid up to its last complete object, so rather
+    than losing every concept we close the array after the last one.
+    """
+    text = raw_text.strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if match:
+        text = match.group(1).strip()
+
+    start = text.find("[")
+    if start > 0:
+        text = text[start:]
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    last_complete = text.rfind("}")
+    if last_complete == -1:
+        raise ValueError("Failed to parse concept extraction response as JSON")
+
+    try:
+        concepts = json.loads(text[: last_complete + 1] + "]")
+    except json.JSONDecodeError:
+        raise ValueError("Failed to parse concept extraction response as JSON")
+
+    logger.warning("concept_extraction_truncated_recovered", recovered=len(concepts))
+    return concepts
 
 
 async def extract_concepts_from_syllabus(
@@ -39,30 +78,31 @@ async def extract_concepts_from_syllabus(
 
     model = get_gemini_model()
     prompt = CONCEPT_EXTRACTION_PROMPT.format(
-        subject_name=subject.name, syllabus_text=syllabus_text
+        subject_name=subject.name,
+        syllabus_text=syllabus_text,
+        max_concepts=MAX_CONCEPTS,
     )
 
     response = model.generate_content(
         prompt,
         generation_config=genai.GenerationConfig(
             temperature=0.3,
-            max_output_tokens=4096,
+            max_output_tokens=CONCEPT_OUTPUT_TOKENS,
         ),
     )
 
-    raw_text = response.text.strip()
-    # Extract JSON from potential markdown code blocks
-    json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw_text)
-    if json_match:
-        raw_text = json_match.group(1).strip()
-
     try:
-        concepts_data = json.loads(raw_text)
-    except json.JSONDecodeError:
-        logger.error("concept_extraction_json_parse_error", raw=raw_text[:500])
-        raise ValueError("Failed to parse concept extraction response as JSON")
+        concepts_data = _parse_concept_json(response.text)
+    except ValueError:
+        logger.error(
+            "concept_extraction_json_parse_error", raw=response.text.strip()[:500]
+        )
+        raise
 
     # Insert concepts into DB
+    concepts_data = [
+        c for c in concepts_data if isinstance(c, dict) and c.get("name")
+    ]
     name_to_concept = {}
     for c_data in concepts_data:
         existing = await db.execute(
@@ -126,17 +166,6 @@ async def extract_concepts_from_syllabus(
     return concepts_data
 
 
-async def populate_concepts_from_pdf(
-    db: AsyncSession, subject_id, pdf_path: str
-):
-    from app.rag.chunker import extract_text_from_pdf
-
-    pages = extract_text_from_pdf(pdf_path)
-    # Use first 5 pages (likely TOC / syllabus)
-    syllabus_text = "\n\n".join(p["text"] for p in pages[:5])
-    return await extract_concepts_from_syllabus(db, subject_id, syllabus_text)
-
-
 DEPENDENCY_DETECTION_PROMPT = """You are an expert curriculum analyst. Given these text chunks from a course PDF, identify concept dependency relationships.
 
 For each dependency, provide the prerequisite concept and the dependent concept.
@@ -182,14 +211,10 @@ async def auto_detect_dependencies(
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
-                temperature=0.2, max_output_tokens=2048
+                temperature=0.2, max_output_tokens=CONCEPT_OUTPUT_TOKENS
             ),
         )
-        raw = response.text.strip()
-        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
-        if json_match:
-            raw = json_match.group(1).strip()
-        edges_data = json.loads(raw)
+        edges_data = _parse_concept_json(response.text)
     except Exception as e:
         logger.error("dependency_detection_failed", error=str(e))
         return []

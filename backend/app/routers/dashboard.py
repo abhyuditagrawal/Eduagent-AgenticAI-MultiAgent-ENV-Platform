@@ -26,6 +26,36 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
+# A gap longer than this ends a study session rather than counting as study time.
+SESSION_IDLE_MINUTES = 30
+
+
+def _measure_session_minutes(messages) -> dict[str, int]:
+    """Study minutes per day, measured from real message timestamps."""
+    per_day: dict[str, float] = {}
+    session_start = None
+    previous = None
+
+    def close_session():
+        if session_start is None or previous is None:
+            return
+        day_key = session_start.strftime("%Y-%m-%d")
+        elapsed = (previous - session_start).total_seconds() / 60
+        per_day[day_key] = per_day.get(day_key, 0.0) + elapsed
+
+    for msg in messages:
+        ts = msg.created_at
+        if previous is None:
+            session_start = ts
+        elif (ts - previous).total_seconds() / 60 > SESSION_IDLE_MINUTES:
+            close_session()
+            session_start = ts
+        previous = ts
+    close_session()
+
+    return {day: int(round(minutes)) for day, minutes in per_day.items()}
+
+
 def _status_label(confidence: float) -> str:
     if confidence >= 0.8:
         return "mastered"
@@ -128,6 +158,13 @@ async def get_weak_points_dashboard(
 
         priority = "high" if w["confidence"] < 0.2 else "medium" if w["confidence"] < 0.35 else "low"
 
+        days_since_review = None
+        if w.get("last_seen"):
+            last_seen = datetime.fromisoformat(w["last_seen"])
+            if last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
+            days_since_review = (datetime.now(timezone.utc) - last_seen).days
+
         enriched.append({
             "concept": {
                 "id": w["concept_id"],
@@ -138,7 +175,7 @@ async def get_weak_points_dashboard(
             "reason": reason,
             "missing_prerequisites": gap_names,
             "suggestion": suggestion,
-            "days_since_review": 0,
+            "days_since_review": days_since_review,
             "priority": priority,
         })
 
@@ -285,8 +322,6 @@ async def get_activity(
             }
 
         daily[day_key]["messages_sent"] += 1
-        if msg.role == "user":
-            daily[day_key]["time_spent_minutes"] += 2
 
         if msg.agent_type:
             agents = daily[day_key]["agents_used"]
@@ -299,6 +334,13 @@ async def get_activity(
         updates = meta.get("confidence_updates", [])
         for u in updates:
             daily[day_key]["confidence_gained"] += u.get("quality", 0) * 0.02
+
+    # Measure real study time from message timestamps: consecutive messages less
+    # than SESSION_IDLE_MINUTES apart belong to one study session, and a session
+    # lasts from its first to its last message.
+    for day_key, minutes in _measure_session_minutes(messages).items():
+        if day_key in daily:
+            daily[day_key]["time_spent_minutes"] = minutes
 
     daily_list = sorted(daily.values(), key=lambda x: x["date"])
 

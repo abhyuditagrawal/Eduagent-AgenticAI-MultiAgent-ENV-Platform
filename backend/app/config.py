@@ -24,6 +24,12 @@ class Settings(BaseSettings):
 
     # LLM
     GEMINI_API_KEY: str = "your-gemini-api-key-here"
+    # Configurable so a retired model can be swapped via .env without a rebuild.
+    # The "-latest" alias tracks the current model instead of pinning to one that
+    # Google will eventually turn off. Flash-Lite is the default because a single
+    # chat turn costs 3-4 API calls and the full Flash tier allows only 5 requests
+    # per minute on the free plan, which rate-limits an ordinary conversation.
+    GEMINI_MODEL: str = "gemini-flash-lite-latest"
 
     # Frontend
     NEXT_PUBLIC_API_URL: str = "http://localhost:8000"

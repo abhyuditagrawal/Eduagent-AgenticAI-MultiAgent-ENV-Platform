@@ -103,7 +103,7 @@ class ExamPredictorAgent(BaseAgent):
             response = model.generate_content(
                 full_prompt,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.7, max_output_tokens=2048
+                    temperature=0.7, max_output_tokens=4096
                 ),
             )
             return response.text
@@ -203,7 +203,9 @@ class ExamPredictorAgent(BaseAgent):
             resp = model.generate_content(
                 eval_prompt,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.0, max_output_tokens=5
+                    # A single digit, but current models reason before answering
+                    # and return nothing if the budget stops them mid-thought.
+                    temperature=0.0, max_output_tokens=256
                 ),
             )
             score_text = resp.text.strip()

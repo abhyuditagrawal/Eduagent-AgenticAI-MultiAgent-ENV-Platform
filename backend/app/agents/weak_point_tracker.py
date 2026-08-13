@@ -154,7 +154,7 @@ class WeakPointTrackerAgent(BaseAgent):
             response = model.generate_content(
                 full_prompt,
                 generation_config=genai.GenerationConfig(
-                    temperature=0.7, max_output_tokens=2048
+                    temperature=0.7, max_output_tokens=4096
                 ),
             )
             return response.text
@@ -165,15 +165,13 @@ class WeakPointTrackerAgent(BaseAgent):
     async def assess_understanding(
         self, state: AgentState, response: str
     ) -> list[dict]:
-        # Mark reviewed concepts as "seen"
+        # This agent diagnoses; it never tests the student, so it has no evidence
+        # to change mastery with. Record which weak concepts were surfaced so the
+        # activity analytics show real coverage, but leave the scores untouched.
         student_state = state.get("student_state", {})
-        weak_concepts = [
+        state["concept_ids_touched"] = [
             cid
             for cid, v in student_state.items()
             if v.get("confidence", 0) < 0.4
-        ]
-        # Give a small quality bump for reviewing
-        return [
-            {"concept_id": cid, "quality": 2}
-            for cid in weak_concepts[:5]
-        ]
+        ][:5]
+        return []

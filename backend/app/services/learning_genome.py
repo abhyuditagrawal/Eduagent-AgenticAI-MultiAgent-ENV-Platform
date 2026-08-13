@@ -61,7 +61,8 @@ async def _compute_pace(db: AsyncSession, student_id) -> tuple[str, float]:
     rows = result.scalars().all()
     mastered = [r for r in rows if r.confidence_score >= 0.8 and r.attempts > 0]
     if not mastered:
-        return "average", 0.5
+        # No mastered concepts yet — pace is genuinely unknown, not "average".
+        return None, None
     avg_attempts = sum(r.attempts for r in mastered) / len(mastered)
     # Fewer attempts to mastery => faster learner
     if avg_attempts <= 2.0:
@@ -98,8 +99,10 @@ async def _compute_behaviour(db: AsyncSession, student_id) -> dict:
         if m.role == "user" and m.content:
             user_texts.append(m.content[:300])
 
-    optimal_hour = hour_counter.most_common(1)[0][0] if hour_counter else 18
-    preferred = agent_counter.most_common(1)[0][0] if agent_counter else "concept_qa"
+    # Left as None with no activity — reporting a default here would present an
+    # invented habit as an observed one.
+    optimal_hour = hour_counter.most_common(1)[0][0] if hour_counter else None
+    preferred = agent_counter.most_common(1)[0][0] if agent_counter else None
 
     # Average session length: group timestamps into sessions (>30 min gap = new)
     avg_session = 0.0
@@ -131,7 +134,8 @@ async def _compute_persistence(db: AsyncSession, student_id) -> float:
     rows = result.scalars().all()
     weak = [r for r in rows if r.confidence_score < 0.5]
     if not weak:
-        return 0.6
+        # Nothing to persist at yet — no evidence either way.
+        return None
     revisited = [r for r in weak if r.attempts >= 2]
     return round(len(revisited) / len(weak), 3)
 
@@ -145,7 +149,7 @@ async def _llm_misconceptions(user_texts: list[str]) -> dict:
         resp = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
-                temperature=0.3, max_output_tokens=512
+                temperature=0.3, max_output_tokens=2048
             ),
         )
         raw = resp.text.strip()
@@ -162,16 +166,32 @@ async def _llm_misconceptions(user_texts: list[str]) -> dict:
         return {"misconceptions": [], "strengths": []}
 
 
-def _build_summary(pace_label: str, modality: str, optimal_hour: int,
-                   persistence: float, misconceptions: list[str]) -> str:
-    modality_h = MODALITY_LABELS.get(modality, modality)
-    persistence_h = (
-        "high" if persistence >= 0.66 else "moderate" if persistence >= 0.33 else "low"
-    )
-    parts = [
-        f"This student is a {pace_label}-paced learner who prefers {modality_h}.",
-        f"They are most active around {optimal_hour:02d}:00 and show {persistence_h} persistence on weak topics.",
-    ]
+def _build_summary(pace_label: str | None, modality: str | None, optimal_hour: int | None,
+                   persistence: float | None, misconceptions: list[str]) -> str:
+    """Describe only the traits actually observed; stay silent about the rest."""
+    parts = []
+
+    if pace_label and modality:
+        parts.append(
+            f"This student is a {pace_label}-paced learner who prefers "
+            f"{MODALITY_LABELS.get(modality, modality)}."
+        )
+    elif pace_label:
+        parts.append(f"This student is a {pace_label}-paced learner.")
+    elif modality:
+        parts.append(
+            f"This student prefers {MODALITY_LABELS.get(modality, modality)}."
+        )
+
+    if optimal_hour is not None:
+        parts.append(f"They are most active around {optimal_hour:02d}:00.")
+
+    if persistence is not None:
+        persistence_h = (
+            "high" if persistence >= 0.66 else "moderate" if persistence >= 0.33 else "low"
+        )
+        parts.append(f"They show {persistence_h} persistence on weak topics.")
+
     if pace_label == "slow":
         parts.append("Provide extra scaffolding, break ideas into small steps, and check understanding frequently.")
     elif pace_label == "fast":
@@ -179,6 +199,10 @@ def _build_summary(pace_label: str, modality: str, optimal_hour: int,
     if misconceptions:
         parts.append("Watch for these recurring misconceptions: " + "; ".join(misconceptions) + ".")
     return " ".join(parts)
+
+
+def _round_or_none(value, digits: int):
+    return round(value, digits) if value is not None else None
 
 
 async def compute_genome(db: AsyncSession, student_id) -> LearningGenome:
@@ -235,14 +259,14 @@ async def get_genome_summary(db: AsyncSession, student_id) -> str:
 def genome_to_dict(genome: LearningGenome) -> dict:
     return {
         "pace_label": genome.pace_label,
-        "pace_score": round(genome.pace_score, 3),
+        "pace_score": _round_or_none(genome.pace_score, 3),
         "preferred_modality": genome.preferred_modality,
         "preferred_modality_label": MODALITY_LABELS.get(
             genome.preferred_modality, genome.preferred_modality
         ),
         "optimal_hour": genome.optimal_hour,
-        "persistence_score": round(genome.persistence_score, 3),
-        "avg_session_minutes": round(genome.avg_session_minutes, 1),
+        "persistence_score": _round_or_none(genome.persistence_score, 3),
+        "avg_session_minutes": _round_or_none(genome.avg_session_minutes, 1),
         "misconception_patterns": genome.misconception_patterns or [],
         "strengths": genome.strengths or [],
         "summary": genome.summary or "",
