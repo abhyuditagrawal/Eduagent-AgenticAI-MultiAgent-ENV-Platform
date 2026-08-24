@@ -29,6 +29,10 @@ def _verify_ws_token(token: str) -> dict | None:
         payload = jwt.decode(
             token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
         )
+        # Match the HTTP dependency: a refresh token must not authenticate a
+        # session, or it becomes a 7-day credential instead of a 30-minute one.
+        if payload.get("type") != "access":
+            return None
         return payload
     except JWTError:
         return None

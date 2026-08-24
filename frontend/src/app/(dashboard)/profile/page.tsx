@@ -96,7 +96,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-6">
+    <div className="h-full overflow-y-auto p-6"><div className="max-w-2xl mx-auto space-y-6">
       {/* User info */}
       <Card>
         <CardHeader className="pb-2">
@@ -194,6 +194,7 @@ export default function ProfilePage() {
         <Download className="h-4 w-4 mr-2" />
         Export My Data (JSON)
       </Button>
+    </div>
     </div>
   );
 }

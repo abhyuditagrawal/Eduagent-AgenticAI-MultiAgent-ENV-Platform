@@ -1,13 +1,13 @@
 "use client";
 
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
   Area,
   AreaChart,
 } from "recharts";
@@ -28,7 +28,6 @@ export function ActivityChart({ dailyActivity }: ActivityChartProps) {
     date: d.date.slice(5),
     messages: d.messages_sent,
     concepts: d.concepts_reviewed,
-    confidence: Math.round(d.confidence_gained * 100),
   }));
 
   if (data.length === 0) {
@@ -61,6 +60,7 @@ export function ActivityChart({ dailyActivity }: ActivityChartProps) {
             tickLine={false}
             axisLine={false}
           />
+          <Legend wrapperStyle={{ fontSize: "11px" }} iconSize={8} />
           <Tooltip
             contentStyle={{
               fontSize: "12px",

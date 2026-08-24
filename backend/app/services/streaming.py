@@ -10,7 +10,6 @@ from app.agents.intent_classifier import classify_intent
 from app.agents.concept_qa import ConceptQAAgent
 from app.agents.exam_predictor import ExamPredictorAgent
 from app.agents.base import BaseAgent
-from app.services.cache import cache_get, cache_set
 
 logger = structlog.get_logger()
 

@@ -2,7 +2,7 @@ import re
 
 import structlog
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, match_concepts_in_text
 from app.agents.state import AgentState
 from app.rag.retriever import retrieve
 
@@ -182,12 +182,12 @@ class CritiqueAgent(BaseAgent):
         student_state = state.get("student_state", {})
         messages = state.get("messages", [])
         user_message = messages[-1] if isinstance(messages[-1], str) else messages[-1].get("content", "")
-        user_lower = user_message.lower()
 
-        updates = []
-        for cid, cdata in student_state.items():
-            cname = cdata.get("concept_name", "")
-            if cname.lower() in user_lower:
-                updates.append({"concept_id": cid, "quality": quality})
+        concept_ids = match_concepts_in_text(user_message, student_state, limit=10)
+        if not concept_ids:
+            return []
 
-        return updates[:10]
+        # Report coverage too, so a critique session shows up in activity
+        # analytics instead of looking like nothing was studied.
+        state["concept_ids_touched"] = concept_ids
+        return [{"concept_id": cid, "quality": quality} for cid in concept_ids]

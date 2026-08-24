@@ -73,46 +73,52 @@ export async function streamSSE(
   const decoder = new TextDecoder();
   let buffer = "";
 
+  /**
+   * Parse one complete SSE frame. A frame that carries no data line (a comment
+   * or keep-alive) is ignored.
+   */
+  const emitFrame = (frame: string) => {
+    let eventType = "message";
+    const dataLines: string[] = [];
+
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event:")) {
+        eventType = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).trim());
+      }
+    }
+
+    if (dataLines.length === 0) return;
+
+    try {
+      onEvent({ type: eventType, data: JSON.parse(dataLines.join("\n")) });
+    } catch {
+      // Skip malformed JSON
+    }
+  };
+
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
+      // Normalise CRLF so frame splitting works behind proxies that rewrite it.
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
 
-      // Parse SSE events from buffer
-      const lines = buffer.split("\n");
-      buffer = "";
+      // Frames are blank-line delimited. A network chunk can split one anywhere,
+      // so the trailing segment is always held back until its terminator lands —
+      // parsing it early is what used to drop tokens mid-stream.
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
 
-      let currentEvent = "";
-      let currentData = "";
-
-      for (const line of lines) {
-        if (line.startsWith("event: ")) {
-          currentEvent = line.slice(7).trim();
-        } else if (line.startsWith("data: ")) {
-          currentData = line.slice(6).trim();
-        } else if (line === "" && currentEvent && currentData) {
-          try {
-            const parsed = JSON.parse(currentData);
-            onEvent({ type: currentEvent, data: parsed });
-          } catch {
-            // Skip malformed JSON
-          }
-          currentEvent = "";
-          currentData = "";
-        } else if (line !== "") {
-          // Incomplete event — put back in buffer
-          buffer += line + "\n";
-        }
-      }
-
-      // If we have an incomplete event at the end, keep it in buffer
-      if (currentEvent || currentData) {
-        if (currentEvent) buffer += `event: ${currentEvent}\n`;
-        if (currentData) buffer += `data: ${currentData}\n`;
+      for (const frame of frames) {
+        if (frame.trim()) emitFrame(frame);
       }
     }
+
+    // A final frame without its trailing blank line is still a frame.
+    if (buffer.trim()) emitFrame(buffer);
   } finally {
     reader.releaseLock();
   }

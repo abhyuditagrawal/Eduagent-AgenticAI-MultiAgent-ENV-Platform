@@ -52,6 +52,8 @@ export default function ChatPage() {
     cancelStream,
   } = useChatStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const [traceOpen, setTraceOpen] = useState(false);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
@@ -69,9 +71,31 @@ export default function ChatPage() {
   });
   const [showConceptPicker, setShowConceptPicker] = useState<"protege" | "viva" | null>(null);
 
+  // Track whether the reader is parked at the bottom. Streaming rewrites the
+  // message list on every token, so without this the view would yank back down
+  // while they are scrolled up reading earlier answers.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const onScroll = () => {
+      const distanceFromBottom =
+        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      stickToBottomRef.current = distanceFromBottom < 80;
+    };
+
+    viewport.addEventListener("scroll", onScroll, { passive: true });
+    return () => viewport.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    // Smooth animation per token would fight itself; only the settled view animates.
+    messagesEndRef.current?.scrollIntoView({
+      behavior: isStreaming ? "auto" : "smooth",
+      block: "end",
+    });
+  }, [messages, isStreaming]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -133,6 +157,9 @@ export default function ChatPage() {
 
     const { override: slashOverride, message: content } = parseOverride(rawContent);
     const effectiveOverride = slashOverride || agentOverride;
+
+    // Sending is an explicit request to follow along again.
+    stickToBottomRef.current = true;
 
     // Add user message
     const userMessage = {
@@ -322,7 +349,7 @@ export default function ChatPage() {
     <div className="flex h-full">
       <div className="flex-1 flex flex-col min-w-0">
         {/* Subject selector + trace toggle */}
-        <div className="flex items-center justify-between border-b">
+        <div className="flex items-center justify-between border-b shrink-0">
           <SubjectSelector value={selectedSubject} onChange={setSelectedSubject} />
           <div className="pr-2">
             <Button
@@ -362,7 +389,7 @@ export default function ChatPage() {
         {/* Nudge Banner */}
         <NudgeBanner onNudgeClick={handleNudgeClick} />
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0" viewportRef={viewportRef}>
           <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">

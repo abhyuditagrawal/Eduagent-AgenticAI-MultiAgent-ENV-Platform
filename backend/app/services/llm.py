@@ -1,4 +1,4 @@
-import time
+import asyncio
 from typing import AsyncGenerator
 
 import structlog
@@ -78,7 +78,10 @@ async def generate_response(
         except Exception as e:
             logger.warning("gemini_api_error", attempt=attempt, error=str(e))
             if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
+                # Blocking here would stall every other request in the
+                # process for the whole backoff, and 429s are routine on
+                # the free tier.
+                await asyncio.sleep(2 ** attempt)
             else:
                 raise RuntimeError(f"Failed to get response from Gemini after {max_retries} retries: {e}")
 

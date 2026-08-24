@@ -160,7 +160,7 @@ export default function StudyGroupsPage() {
           </Button>
         </div>
 
-        <ScrollArea className="flex-1 p-4">
+        <ScrollArea className="flex-1 min-h-0 p-4">
           <div className="space-y-3">
             {messages.map((msg, i) => (
               <div key={i} className={`${

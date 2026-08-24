@@ -39,6 +39,57 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
+async def _resolve_subject(
+    db: AsyncSession,
+    requested_subject_id,
+    conversation: Conversation,
+    student_id,
+) -> tuple[object | None, str | None, str | None]:
+    """Work out which subject this turn belongs to, and remember it.
+
+    Retrieval is scoped by subject code: with no subject resolved the agents
+    never search the uploaded course material and answer from general knowledge
+    instead, which reads as "it cannot see my syllabus". So an explicit choice is
+    persisted onto the conversation, and an unspecified one falls back to the
+    student's enrolments rather than giving up.
+    """
+    subject_id = requested_subject_id or conversation.subject_id
+
+    if subject_id is None:
+        result = await db.execute(
+            select(Subject)
+            .join(Enrollment, Enrollment.subject_id == Subject.id)
+            .where(Enrollment.student_id == student_id)
+            .order_by(Subject.code)
+        )
+        enrolled = result.scalars().all()
+        if enrolled:
+            # Deterministic pick: grounded in the wrong subject is still
+            # recoverable (the trace panel shows the sources), ungrounded is not.
+            subject_id = enrolled[0].id
+            if len(enrolled) > 1:
+                logger.info(
+                    "subject_defaulted_from_enrolment",
+                    student_id=str(student_id),
+                    subject=enrolled[0].code,
+                    enrolled_count=len(enrolled),
+                )
+
+    if subject_id is None:
+        return None, None, None
+
+    subject = await db.get(Subject, subject_id)
+    if not subject:
+        return None, None, None
+
+    # Persist a switch so later turns in this conversation stay on this subject.
+    if conversation.subject_id != subject.id:
+        conversation.subject_id = subject.id
+        await db.commit()
+
+    return subject.id, subject.code, subject.name
+
+
 @router.post("", response_model=ChatResponse)
 async def chat(
     data: ChatRequest,
@@ -75,26 +126,9 @@ async def chat(
     await db.commit()
 
     # 3. Determine subject
-    subject_code = None
-    subject_name = None
-    subject_id = data.subject_id or conversation.subject_id
-    if subject_id:
-        subject = await db.get(Subject, subject_id)
-        if subject:
-            subject_code = subject.code
-            subject_name = subject.name
-    else:
-        result = await db.execute(
-            select(Subject)
-            .join(Enrollment, Enrollment.subject_id == Subject.id)
-            .where(Enrollment.student_id == current_user.id)
-        )
-        subjects = result.scalars().all()
-        if len(subjects) == 1:
-            subject_code = subjects[0].code
-            subject_name = subjects[0].name
-            subject_id = subjects[0].id
-            conversation.subject_id = subjects[0].id
+    subject_id, subject_code, subject_name = await _resolve_subject(
+        db, data.subject_id, conversation, current_user.id
+    )
 
     # 4. Load conversation history
     history_result = await db.execute(
@@ -238,26 +272,9 @@ async def chat_stream(
     await db.commit()
 
     # 3. Determine subject
-    subject_code = None
-    subject_name = None
-    subject_id = data.subject_id or conversation.subject_id
-    if subject_id:
-        subject = await db.get(Subject, subject_id)
-        if subject:
-            subject_code = subject.code
-            subject_name = subject.name
-    else:
-        result = await db.execute(
-            select(Subject)
-            .join(Enrollment, Enrollment.subject_id == Subject.id)
-            .where(Enrollment.student_id == current_user.id)
-        )
-        subjects = result.scalars().all()
-        if len(subjects) == 1:
-            subject_code = subjects[0].code
-            subject_name = subjects[0].name
-            subject_id = subjects[0].id
-            conversation.subject_id = subjects[0].id
+    subject_id, subject_code, subject_name = await _resolve_subject(
+        db, data.subject_id, conversation, current_user.id
+    )
 
     # 4. History
     history_result = await db.execute(

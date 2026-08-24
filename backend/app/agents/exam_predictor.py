@@ -1,7 +1,7 @@
 import structlog
 import google.generativeai as genai
 
-from app.agents.base import BaseAgent
+from app.agents.base import BaseAgent, grade_answer
 from app.agents.state import AgentState
 from app.rag.retriever import retrieve
 from app.services.llm import get_gemini_model
@@ -148,10 +148,13 @@ class ExamPredictorAgent(BaseAgent):
         if len(user_msg.split()) < 5:
             return []
 
-        # Use LLM to evaluate the student's answer
-        quality = await self._llm_evaluate_exam_answer(
-            prev_assistant, user_msg, state
+        # Use the shared grader; it returns None when the answer cannot be scored.
+        ground_truth = "\n".join(
+            c.get("text", "")[:300] for c in state.get("rag_context", [])[:3]
         )
+        quality = await grade_answer(prev_assistant, user_msg, ground_truth)
+        if quality is None:
+            return []
 
         # Apply quality to all touched concepts or weak concepts
         student_state = state.get("student_state", {})
@@ -166,51 +169,3 @@ class ExamPredictorAgent(BaseAgent):
             if cdata.get("confidence", 0) < 0.5
         ]
         return [{"concept_id": cid, "quality": quality} for cid in weak_ids[:3]]
-
-    async def _llm_evaluate_exam_answer(
-        self, question_context: str, student_answer: str, state: AgentState
-    ) -> int:
-        """Use LLM to evaluate a student's answer to an exam practice question."""
-        rag_context = state.get("rag_context", [])
-        ground_truth = ""
-        if rag_context:
-            ground_truth = "\n".join(
-                c.get("text", "")[:300] for c in rag_context[:3]
-            )
-
-        eval_prompt = (
-            "You are an exam grader. Evaluate the student's answer to the "
-            "practice question(s) below.\n\n"
-            f"Practice question(s) given:\n{question_context[-800:]}\n\n"
-            f"Student's answer:\n{student_answer}\n\n"
-        )
-        if ground_truth:
-            eval_prompt += (
-                f"Reference material:\n{ground_truth}\n\n"
-            )
-        eval_prompt += (
-            "Rate the answer quality on a scale of 1-5:\n"
-            "1 = Completely wrong or off-topic\n"
-            "2 = Mostly incorrect with some relevant points\n"
-            "3 = Partially correct but missing key details\n"
-            "4 = Largely correct with minor gaps\n"
-            "5 = Fully correct and well-explained\n\n"
-            "Respond with ONLY a single integer (1-5), nothing else."
-        )
-
-        try:
-            model = get_gemini_model()
-            resp = model.generate_content(
-                eval_prompt,
-                generation_config=genai.GenerationConfig(
-                    # A single digit, but current models reason before answering
-                    # and return nothing if the budget stops them mid-thought.
-                    temperature=0.0, max_output_tokens=256
-                ),
-            )
-            score_text = resp.text.strip()
-            score = int(score_text[0]) if score_text and score_text[0].isdigit() else 3
-            return max(1, min(5, score))
-        except Exception as e:
-            logger.error("exam_eval_failed", error=str(e))
-            return 3
