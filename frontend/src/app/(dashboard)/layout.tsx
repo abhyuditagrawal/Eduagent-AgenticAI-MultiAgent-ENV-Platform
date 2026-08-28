@@ -114,9 +114,12 @@ function NavLink({
   const Icon = item.icon;
   // `render` composes into a single <a>. Nesting <Button> inside <Link> would
   // put a <button> inside an <a>, which is invalid HTML.
+  // nativeButton={false} because the rendered element is an anchor, not a
+  // <button> — an <a href> already carries its own interactive semantics.
   return (
     <Button
       render={<Link href={item.href} />}
+      nativeButton={false}
       title={expanded ? undefined : item.label}
       variant={active ? "secondary" : "ghost"}
       className={
