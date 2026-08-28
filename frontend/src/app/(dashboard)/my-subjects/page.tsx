@@ -248,11 +248,9 @@ export default function MySubjectsPage() {
 
   const createDialog = (
     <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-      <DialogTrigger>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          New Subject
-        </Button>
+      <DialogTrigger render={<Button />}>
+        <Plus className="h-4 w-4 mr-2" />
+        New Subject
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

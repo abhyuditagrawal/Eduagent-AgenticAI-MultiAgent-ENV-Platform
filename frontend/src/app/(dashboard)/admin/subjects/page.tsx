@@ -85,11 +85,9 @@ export default function AdminSubjectsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Manage Subjects</h1>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Subject
-            </Button>
+          <DialogTrigger render={<Button />}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Subject
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>

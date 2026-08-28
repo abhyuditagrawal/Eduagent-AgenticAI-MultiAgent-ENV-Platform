@@ -112,21 +112,23 @@ function NavLink({
   active: boolean;
 }) {
   const Icon = item.icon;
+  // `render` composes into a single <a>. Nesting <Button> inside <Link> would
+  // put a <button> inside an <a>, which is invalid HTML.
   return (
-    <Link href={item.href} title={expanded ? undefined : item.label}>
-      <Button
-        variant={active ? "secondary" : "ghost"}
-        className={
-          expanded
-            ? "w-full justify-start gap-2 text-sm"
-            : "w-full justify-center px-0"
-        }
-        size={expanded ? "default" : "icon"}
-      >
-        <Icon className="h-4 w-4 shrink-0" />
-        {expanded && <span className="truncate">{item.label}</span>}
-      </Button>
-    </Link>
+    <Button
+      render={<Link href={item.href} />}
+      title={expanded ? undefined : item.label}
+      variant={active ? "secondary" : "ghost"}
+      className={
+        expanded
+          ? "w-full justify-start gap-2 text-sm"
+          : "w-full justify-center px-0"
+      }
+      size={expanded ? "default" : "icon"}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      {expanded && <span className="truncate">{item.label}</span>}
+    </Button>
   );
 }
 

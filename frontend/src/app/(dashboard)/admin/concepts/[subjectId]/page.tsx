@@ -122,11 +122,9 @@ export default function AdminConceptsPage() {
         </div>
         <div className="flex gap-2">
           <Dialog open={syllabusDialogOpen} onOpenChange={setSyllabusDialogOpen}>
-            <DialogTrigger>
-              <Button variant="outline">
-                <Sparkles className="h-4 w-4 mr-2" />
-                Populate from Syllabus
-              </Button>
+            <DialogTrigger render={<Button variant="outline" />}>
+              <Sparkles className="h-4 w-4 mr-2" />
+              Populate from Syllabus
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
