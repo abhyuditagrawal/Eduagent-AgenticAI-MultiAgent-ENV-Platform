@@ -2,7 +2,7 @@
 
 import { useSession, signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   MessageSquare,
@@ -27,6 +27,8 @@ import {
   Swords,
   Dna,
   Compass,
+  Pencil,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,9 +41,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useChatStore, type Conversation } from "@/stores/chat-store";
 import api from "@/lib/api";
+import { toast } from "sonner";
 import { usePersistedState } from "@/lib/use-persisted-state";
 
 interface NavItem {
@@ -148,8 +157,18 @@ export default function DashboardLayout({
     SECTIONS_KEY,
     NO_SECTIONS
   );
-  const { conversations, setConversations, setActiveConversation } =
-    useChatStore();
+  const {
+    conversations,
+    setConversations,
+    setActiveConversation,
+    removeConversation,
+    updateConversation,
+  } = useChatStore();
+
+  const [convToDelete, setConvToDelete] = useState<Conversation | null>(null);
+  const [deletingConv, setDeletingConv] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   const toggleSection = (id: string) => {
     setCollapsedSections(
@@ -179,6 +198,60 @@ export default function DashboardLayout({
       loadConversations();
     }
   }, [session?.accessToken, loadConversations]);
+
+  // Escape clears renamingId, but the input's blur handler is a closure from the
+  // previous render and still sees the old id — without this flag, cancelling
+  // would save instead.
+  const renameCancelled = useRef(false);
+
+  const commitRename = async () => {
+    const id = renamingId;
+    if (!id) return;
+
+    if (renameCancelled.current) {
+      renameCancelled.current = false;
+      setRenamingId(null);
+      return;
+    }
+
+    const title = renameDraft.trim();
+    const original = conversations.find((c) => c.id === id);
+    setRenamingId(null);
+
+    // Nothing typed, or unchanged — leave it alone rather than round-tripping.
+    if (!title || title === original?.title) return;
+
+    // Optimistic: the list updates immediately and rolls back if the call fails.
+    updateConversation(id, { title });
+    try {
+      await api.patch(`/api/chat/conversations/${id}`, { title });
+    } catch {
+      updateConversation(id, { title: original?.title ?? null });
+      toast.error("Could not rename that chat");
+    }
+  };
+
+  const handleDeleteConversation = async (conv: Conversation) => {
+    setDeletingConv(true);
+    try {
+      await api.delete(`/api/chat/conversations/${conv.id}`);
+      const wasActive = useChatStore.getState().activeConversation?.id === conv.id;
+      removeConversation(conv.id);
+      setConvToDelete(null);
+      toast.success("Chat deleted");
+      // The open transcript was just cleared, so land somewhere coherent.
+      if (wasActive) router.push("/chat");
+    } catch (err: unknown) {
+      const detail =
+        typeof err === "object" && err !== null && "response" in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data
+              ?.detail
+          : undefined;
+      toast.error(detail || "Could not delete that chat");
+    } finally {
+      setDeletingConv(false);
+    }
+  };
 
   const handleNewChat = () => {
     setActiveConversation(null);
@@ -344,16 +417,68 @@ export default function DashboardLayout({
                 <p className="px-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Recent
                 </p>
-                {conversations.map((conv) => (
-                  <button
-                    key={conv.id}
-                    onClick={() => handleSelectConversation(conv)}
-                    className="w-full text-left px-3 py-2 rounded-md hover:bg-accent text-sm truncate transition-colors"
-                  >
-                    <MessageSquare className="h-3.5 w-3.5 inline mr-2 opacity-60" />
-                    {conv.title || "New conversation"}
-                  </button>
-                ))}
+                {conversations.map((conv) => {
+                  const isEditing = renamingId === conv.id;
+                  return (
+                    // Siblings, not nested: a delete button inside the select
+                    // button would be a <button> inside a <button>.
+                    <div
+                      key={conv.id}
+                      className="group/conv flex items-center rounded-md hover:bg-accent transition-colors"
+                    >
+                      {isEditing ? (
+                        <input
+                          autoFocus
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onBlur={commitRename}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              renameCancelled.current = false;
+                              commitRename();
+                            }
+                            if (e.key === "Escape") {
+                              renameCancelled.current = true;
+                              setRenamingId(null);
+                            }
+                          }}
+                          className="flex-1 min-w-0 bg-transparent px-3 py-2 text-sm outline-none ring-1 ring-ring/40 rounded-md"
+                        />
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleSelectConversation(conv)}
+                            className="flex-1 min-w-0 text-left px-3 py-2 text-sm truncate"
+                            title={conv.title || "New conversation"}
+                          >
+                            <MessageSquare className="h-3.5 w-3.5 inline mr-2 opacity-60" />
+                            {conv.title || "New conversation"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              renameCancelled.current = false;
+                              setRenamingId(conv.id);
+                              setRenameDraft(conv.title || "");
+                            }}
+                            title="Rename"
+                            aria-label={`Rename ${conv.title || "conversation"}`}
+                            className="shrink-0 p-1.5 rounded opacity-0 group-hover/conv:opacity-60 hover:!opacity-100 focus-visible:opacity-100"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setConvToDelete(conv)}
+                            title="Delete"
+                            aria-label={`Delete ${conv.title || "conversation"}`}
+                            className="shrink-0 p-1.5 mr-1 rounded opacity-0 group-hover/conv:opacity-60 hover:!opacity-100 hover:text-destructive focus-visible:opacity-100"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -406,6 +531,45 @@ export default function DashboardLayout({
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {children}
       </main>
+
+      <Dialog
+        open={convToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingConv) setConvToDelete(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this chat?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              &ldquo;{convToDelete?.title || "New conversation"}&rdquo; and all of
+              its messages will be removed. Your mastery scores and progress stay
+              as they are. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                disabled={deletingConv}
+                onClick={() => setConvToDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={deletingConv}
+                onClick={() =>
+                  convToDelete && handleDeleteConversation(convToDelete)
+                }
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete chat
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

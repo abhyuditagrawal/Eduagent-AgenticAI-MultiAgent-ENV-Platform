@@ -18,6 +18,7 @@ from app.schemas.chat import (
     ChatResponse,
     MessageResponse,
     ConversationResponse,
+    ConversationUpdate,
 )
 from app.agents.orchestrator import get_orchestrator
 from app.services.streaming import stream_agent_response
@@ -474,11 +475,11 @@ async def get_history(
 
 @router.get("/conversations/{conversation_id}", response_model=list[MessageResponse])
 async def get_conversation(
-    conversation_id: str,
+    conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    cid = uuid.UUID(conversation_id)
+    cid = conversation_id
     conversation = await db.get(Conversation, cid)
     if not conversation or conversation.student_id != current_user.id:
         raise HTTPException(
@@ -503,3 +504,70 @@ async def get_conversation(
         )
         for m in messages
     ]
+
+
+async def _owned_conversation(
+    db: AsyncSession, conversation_id, student_id
+) -> Conversation:
+    """Fetch a conversation the caller owns, or 404.
+
+    Someone else's conversation reports 404 rather than 403 so the endpoint does
+    not confirm that an id exists.
+    """
+    conversation = await db.get(Conversation, conversation_id)
+    if not conversation or conversation.student_id != student_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation not found",
+        )
+    return conversation
+
+
+@router.patch(
+    "/conversations/{conversation_id}", response_model=ConversationResponse
+)
+async def rename_conversation(
+    conversation_id: uuid.UUID,
+    data: ConversationUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Give a conversation a title of your own."""
+    conversation = await _owned_conversation(db, conversation_id, current_user.id)
+
+    title = data.title.strip()
+    if not title:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Title cannot be blank",
+        )
+
+    conversation.title = title[:255]
+    await db.commit()
+    await db.refresh(conversation)
+    return ConversationResponse.model_validate(conversation)
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a conversation and its messages.
+
+    Messages cascade; agent logs keep their row with the conversation link
+    nulled, so analytics history is not rewritten by a student tidying up.
+    """
+    conversation = await _owned_conversation(db, conversation_id, current_user.id)
+
+    title = conversation.title
+    await db.delete(conversation)
+    await db.commit()
+
+    logger.info(
+        "conversation_deleted",
+        conversation_id=str(conversation_id),
+        student_id=str(current_user.id),
+    )
+    return {"message": f"Deleted {title or 'conversation'}"}

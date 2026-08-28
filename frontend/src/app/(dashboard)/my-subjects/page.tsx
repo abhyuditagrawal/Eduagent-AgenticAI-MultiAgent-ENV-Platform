@@ -14,6 +14,9 @@ import {
   Network,
   MessageSquare,
   BookOpen,
+  Trash2,
+  LogOut,
+  X,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,6 +80,10 @@ export default function MySubjectsPage() {
 
   const [syllabus, setSyllabus] = useState("");
   const [generating, setGenerating] = useState(false);
+
+  const [subjectToRemove, setSubjectToRemove] = useState<SubjectData | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [deletingConceptId, setDeletingConceptId] = useState<string | null>(null);
 
   const loadSubjects = useCallback(async () => {
     try {
@@ -152,6 +159,67 @@ export default function MySubjectsPage() {
       toast.error(detail || "Failed to create subject");
     } finally {
       setCreating(false);
+    }
+  };
+
+  /** Read FastAPI's `detail` off an axios error so the real reason is shown. */
+  const errorDetail = (err: unknown, fallback: string): string => {
+    const detail =
+      typeof err === "object" && err !== null && "response" in err
+        ? (err as { response?: { data?: { detail?: string } } }).response?.data
+            ?.detail
+        : undefined;
+    return detail || fallback;
+  };
+
+  /** Drop the removed subject from local state and pick a sensible replacement. */
+  const afterSubjectRemoved = (removedId: string) => {
+    const remaining = subjects.filter((s) => s.id !== removedId);
+    setSubjects(remaining);
+    setActiveSubject((current) =>
+      current?.id === removedId ? remaining[0] ?? null : current
+    );
+    setSubjectToRemove(null);
+  };
+
+  const handleLeaveSubject = async (subject: SubjectData) => {
+    setRemoving(true);
+    try {
+      await api.delete(`/api/subjects/${subject.id}/enroll`);
+      toast.success(`Left ${subject.name} — it stays available to others`);
+      afterSubjectRemoved(subject.id);
+    } catch (err: unknown) {
+      toast.error(errorDetail(err, "Could not leave that subject"));
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const handleDeleteSubject = async (subject: SubjectData) => {
+    setRemoving(true);
+    try {
+      await api.delete(`/api/subjects/${subject.id}`);
+      toast.success(`Deleted ${subject.name} and its material`);
+      afterSubjectRemoved(subject.id);
+    } catch (err: unknown) {
+      // The API refuses when other students are enrolled, and says so.
+      toast.error(errorDetail(err, "Could not delete that subject"));
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const handleDeleteConcept = async (concept: ConceptData) => {
+    if (!activeSubject) return;
+    setDeletingConceptId(concept.id);
+    try {
+      await api.delete(`/api/concepts/${activeSubject.id}/${concept.id}`);
+      setConcepts((prev) => prev.filter((c) => c.id !== concept.id));
+      toast.success(`Removed ${concept.name}`);
+    } catch (err: unknown) {
+      toast.error(errorDetail(err, "Could not remove that concept"));
+    } finally {
+      setDeletingConceptId(null);
     }
   };
 
@@ -285,6 +353,80 @@ export default function MySubjectsPage() {
     </Dialog>
   );
 
+  // Leaving and deleting differ in blast radius, so the choice is made here
+  // rather than guessed for the student.
+  const removeDialog = (
+    <Dialog
+      open={subjectToRemove !== null}
+      onOpenChange={(open) => {
+        if (!open && !removing) setSubjectToRemove(null);
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remove {subjectToRemove?.name}?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Leave the subject</p>
+            <p className="text-sm text-muted-foreground">
+              Removes it from your list and discards your progress on it. The
+              subject, its concepts and its uploaded material stay for everyone
+              else.
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-destructive">
+              Delete permanently
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Deletes the subject, its concepts and its uploaded material for
+              everyone. Your past chats are kept, but no longer linked to it.
+              Only possible if nobody else is enrolled.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              disabled={removing}
+              onClick={() => setSubjectToRemove(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              disabled={removing}
+              onClick={() =>
+                subjectToRemove && handleLeaveSubject(subjectToRemove)
+              }
+            >
+              {removing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4 mr-2" />
+              )}
+              Leave subject
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={removing}
+              onClick={() =>
+                subjectToRemove && handleDeleteSubject(subjectToRemove)
+              }
+            >
+              {removing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete permanently
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (subjects.length === 0) {
     return (
       <div className="flex items-center justify-center h-full p-6">
@@ -297,6 +439,7 @@ export default function MySubjectsPage() {
             agent answers from your material.
           </p>
           <div className="flex justify-center">{createDialog}</div>
+          {removeDialog}
         </div>
       </div>
     );
@@ -331,10 +474,20 @@ export default function MySubjectsPage() {
       {activeSubject && (
         <>
           <Card>
-            <CardHeader>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle className="text-lg">
                 Upload material for {activeSubject.name}
               </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => setSubjectToRemove(activeSubject)}
+                title={`Remove ${activeSubject.name}`}
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                Remove subject
+              </Button>
             </CardHeader>
             <CardContent>
               <div
@@ -429,13 +582,31 @@ export default function MySubjectsPage() {
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {concepts.map((concept) => (
-                    <Badge key={concept.id} variant="secondary">
+                    <Badge
+                      key={concept.id}
+                      variant="secondary"
+                      className="group/concept gap-1 pr-1"
+                    >
                       {concept.name}
                       {concept.chapter && (
                         <span className="ml-1 opacity-60">
                           · {concept.chapter}
                         </span>
                       )}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${concept.name}`}
+                        title={`Remove ${concept.name}`}
+                        disabled={deletingConceptId === concept.id}
+                        onClick={() => handleDeleteConcept(concept)}
+                        className="ml-0.5 rounded-sm p-0.5 opacity-50 transition-opacity hover:bg-destructive/15 hover:text-destructive hover:opacity-100 focus-visible:opacity-100 disabled:opacity-30"
+                      >
+                        {deletingConceptId === concept.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <X className="h-3 w-3" />
+                        )}
+                      </button>
                     </Badge>
                   ))}
                 </div>
@@ -483,6 +654,7 @@ export default function MySubjectsPage() {
           </Card>
         </>
       )}
+      {removeDialog}
     </div>
     </div>
   );

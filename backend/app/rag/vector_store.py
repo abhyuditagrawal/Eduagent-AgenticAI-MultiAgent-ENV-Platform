@@ -28,6 +28,20 @@ def ensure_collection(collection_name: str):
         )
 
 
+def delete_collection(collection_name: str) -> bool:
+    """Drop a subject's vectors. Returns False if there was nothing to drop.
+
+    Called when a subject is deleted so its embeddings do not linger and get
+    retrieved by a later subject that reuses the same code.
+    """
+    client = get_qdrant_client()
+    existing = [c.name for c in client.get_collections().collections]
+    if collection_name not in existing:
+        return False
+    client.delete_collection(collection_name=collection_name)
+    return True
+
+
 def upsert_chunks(
     collection_name: str,
     chunks: list[dict],

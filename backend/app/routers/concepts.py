@@ -160,3 +160,31 @@ async def create_concept(
 
     await sync_student_concepts(db, sid)
     return ConceptResponse.model_validate(concept)
+
+
+@router.delete("/{subject_id}/{concept_id}")
+async def delete_concept(
+    subject_id: uuid.UUID,
+    concept_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Remove a single concept from a subject.
+
+    Student mastery rows and prerequisite edges on either side cascade, so a
+    concept extracted in error can be dropped without leaving the graph with
+    edges that point at nothing.
+    """
+    sid = subject_id
+    cid = concept_id
+
+    concept = await db.get(Concept, cid)
+    if not concept or concept.subject_id != sid:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Concept not found in this subject"
+        )
+
+    name = concept.name
+    await db.delete(concept)
+    await db.commit()
+    return {"message": f"Deleted {name}"}

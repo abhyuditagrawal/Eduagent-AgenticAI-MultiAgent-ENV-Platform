@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Plus, BookOpen, Upload, Network, Loader2 } from "lucide-react";
+import { Plus, BookOpen, Upload, Network, Loader2, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,12 +34,29 @@ export default function AdminSubjectsPage() {
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [creating, setCreating] = useState(false);
+  const [subjectToDelete, setSubjectToDelete] = useState<SubjectData | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    if (session?.accessToken) loadSubjects();
-  }, [session?.accessToken]);
+  const handleDelete = async (subject: SubjectData) => {
+    setDeleting(true);
+    try {
+      await api.delete(`/api/subjects/${subject.id}`);
+      setSubjects((prev) => prev.filter((s) => s.id !== subject.id));
+      toast.success(`Deleted ${subject.name} and its material`);
+      setSubjectToDelete(null);
+    } catch (err: unknown) {
+      const detail =
+        typeof err === "object" && err !== null && "response" in err
+          ? (err as { response?: { data?: { detail?: string } } }).response?.data
+              ?.detail
+          : undefined;
+      toast.error(detail || "Failed to delete subject");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
-  const loadSubjects = async () => {
+  const loadSubjects = useCallback(async () => {
     try {
       const res = await api.get("/api/subjects");
       setSubjects(res.data);
@@ -48,7 +65,11 @@ export default function AdminSubjectsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (session?.accessToken) loadSubjects();
+  }, [session?.accessToken, loadSubjects]);
 
   const handleCreate = async () => {
     if (!newCode.trim() || !newName.trim()) return;
@@ -163,11 +184,62 @@ export default function AdminSubjectsPage() {
                   <Network className="h-3.5 w-3.5 mr-1" />
                   Graph
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs ml-auto text-muted-foreground hover:text-destructive"
+                  onClick={() => setSubjectToDelete(subject)}
+                  title={`Delete ${subject.name}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      <Dialog
+        open={subjectToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setSubjectToDelete(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {subjectToDelete?.name}?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              This removes the subject, every concept in it, all enrolments and
+              the uploaded material behind it — for every student. Past chats are
+              kept but will no longer be linked to this subject. This cannot be
+              undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                disabled={deleting}
+                onClick={() => setSubjectToDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={deleting}
+                onClick={() => subjectToDelete && handleDelete(subjectToDelete)}
+              >
+                {deleting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                Delete subject
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

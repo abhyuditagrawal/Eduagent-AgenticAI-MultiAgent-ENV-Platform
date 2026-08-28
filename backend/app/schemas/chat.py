@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
@@ -26,6 +26,13 @@ class MessageResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ConversationUpdate(BaseModel):
+    """Rename a conversation. Titles are auto-generated from the first message,
+    so this is the only way to give a long-running chat a meaningful name."""
+
+    title: str = Field(min_length=1, max_length=255)
 
 
 class ConversationResponse(BaseModel):

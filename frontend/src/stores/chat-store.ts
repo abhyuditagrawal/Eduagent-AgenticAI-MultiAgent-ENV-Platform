@@ -33,6 +33,8 @@ interface ChatState {
   addMessage: (message: Message) => void;
   setLoading: (loading: boolean) => void;
   addConversation: (conversation: Conversation) => void;
+  removeConversation: (id: string) => void;
+  updateConversation: (id: string, patch: Partial<Conversation>) => void;
   startStreaming: (messageId: string) => void;
   appendStreamToken: (token: string) => void;
   updateStreamMetadata: (data: Record<string, unknown>) => void;
@@ -58,6 +60,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
   addConversation: (conversation) =>
     set((state) => ({
       conversations: [conversation, ...state.conversations],
+    })),
+  removeConversation: (id) =>
+    set((state) => {
+      // Deleting the open chat has to clear the transcript too, or the messages
+      // of a conversation that no longer exists stay on screen.
+      const wasActive = state.activeConversation?.id === id;
+      return {
+        conversations: state.conversations.filter((c) => c.id !== id),
+        activeConversation: wasActive ? null : state.activeConversation,
+        messages: wasActive ? [] : state.messages,
+        isStreaming: wasActive ? false : state.isStreaming,
+        streamingMessageId: wasActive ? null : state.streamingMessageId,
+      };
+    }),
+  updateConversation: (id, patch) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === id ? { ...c, ...patch } : c
+      ),
+      activeConversation:
+        state.activeConversation?.id === id
+          ? { ...state.activeConversation, ...patch }
+          : state.activeConversation,
     })),
   startStreaming: (messageId) =>
     set({
