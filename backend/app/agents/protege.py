@@ -88,9 +88,6 @@ class ProtegeAgent(BaseAgent):
         return retrieve(query, subject_code, top_k=5)
 
     async def reason(self, state: AgentState, context: list[dict]) -> str:
-        from app.services.llm import get_gemini_model
-        import google.generativeai as genai
-
         subject_name = state.get("subject_name", "the subject")
         student_state = state.get("student_state", {})
         agent_ctx = state.get("metadata", {}).get("agent_context", {})
@@ -153,17 +150,13 @@ class ProtegeAgent(BaseAgent):
 
         full_prompt = f"{system_prompt}\n{history_text}\nStudent (teaching you): {user_message}"
 
-        model = get_gemini_model()
+        from app.services.llm_provider import get_llm_provider
+
+        provider = get_llm_provider()
         try:
-            response = model.generate_content(
-                full_prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.8, max_output_tokens=4096
-                ),
-            )
-            return response.text
+            return provider.generate(full_prompt, temperature=0.8, max_tokens=4096)
         except Exception as e:
-            logger.error("protege_reason_failed", error=str(e))
+            logger.error("protege_reason_failed", provider=provider.name, error=str(e))
             return "Hmm, I got a bit confused there. Could you try explaining that part again?"
 
     async def assess_understanding(

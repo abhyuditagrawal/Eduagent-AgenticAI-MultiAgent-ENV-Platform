@@ -102,6 +102,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("redis_connection_failed", error=str(e))
 
+    # Pre-warm the local embedding model. It's lazily loaded on first use by
+    # design (see rag/embeddings.py), but leaving that first load to happen
+    # inside a student's first chat request risks that request timing out
+    # waiting on model weights instead of an actual answer - loading it here
+    # means the cost is paid once at boot, not on someone's first question.
+    try:
+        from app.rag.embeddings import embed_query
+        embed_query("warmup")
+        logger.info("embedding_model_warmed")
+    except Exception as e:
+        logger.warning("embedding_model_warmup_failed", error=str(e))
+
     logger.info("startup_complete")
 
     yield
@@ -136,6 +148,7 @@ from app.routers import (
     flashcards, analytics, study_planner, progress_report,
     custom_agents, study_rooms, image_chat, ws_study,
     knowledge_tracing, debate, learning_genome, knowledge_frontier,
+    annotations,
 )
 
 app.include_router(auth.router)
@@ -157,6 +170,7 @@ app.include_router(knowledge_tracing.router)
 app.include_router(debate.router)
 app.include_router(learning_genome.router)
 app.include_router(knowledge_frontier.router)
+app.include_router(annotations.router)
 
 
 @app.get("/health")

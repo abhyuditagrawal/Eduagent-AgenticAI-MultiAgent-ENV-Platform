@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Float, Integer, DateTime, ForeignKey, func
+from sqlalchemy import Boolean, Float, Integer, DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -66,4 +66,71 @@ class StudentConcept(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class StudentBktParams(Base):
+    """Per-student BKT parameters, fitted via EM once enough observations exist.
+
+    Nullable until fitted: a student with too little history should fall back
+    to the tuned global defaults in services/knowledge_tracing.py rather than
+    being fitted on noise.
+    """
+
+    __tablename__ = "student_bkt_params"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    p_l0: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p_slip: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p_guess: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p_transit_tier1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p_transit_tier2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    p_transit_tier3: Mapped[float | None] = mapped_column(Float, nullable=True)
+    n_observations: Mapped[int] = mapped_column(Integer, default=0)
+    fitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class BktObservation(Base):
+    """Raw correct/incorrect observation log - the sequence EM fitting needs.
+
+    apply_bkt_observation() only ever needed to update a running mastery
+    estimate, so no such log existed; personalised parameter fitting needs
+    the actual sequence, not just the aggregate.
+    """
+
+    __tablename__ = "bkt_observations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    concept_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("concepts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    difficulty_tier: Mapped[int] = mapped_column(Integer, default=1)
+    correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )

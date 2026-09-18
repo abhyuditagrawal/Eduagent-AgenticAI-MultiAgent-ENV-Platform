@@ -45,6 +45,10 @@ class LearningGenome(Base):
     # Natural-language summary injected into agent prompts
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     data_points: Mapped[int] = mapped_column(Integer, default=0)
+    # Social/peer-collaboration signals (study rooms, annotations, peer debate)
+    collaboration_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    peer_sessions_count: Mapped[int] = mapped_column(Integer, default=0)
+    social_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

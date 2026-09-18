@@ -6,9 +6,85 @@ import google.generativeai as genai
 
 from app.agents.state import AgentState
 from app.services.llm import get_gemini_model
+from app.services.llm_provider import get_llm_provider
+from app.config import get_settings
 from app.rag.retriever import retrieve
 
 logger = structlog.get_logger()
+settings = get_settings()
+
+# Phrases that already signal the model is hedging/refusing rather than
+# asserting unsupported facts - if present, we don't pile an extra caveat on.
+_HEDGE_MARKERS = (
+    "don't have enough information",
+    "do not have enough information",
+    "not covered in the",
+    "isn't covered in",
+    "is not covered in",
+    "can't find this in",
+    "cannot find this in",
+    "no relevant material",
+    "confidence note",
+    "not in your course material",
+    "not in the provided material",
+)
+
+GROUNDING_INSTRUCTION = (
+    "\n\n--- Grounding Rules (follow strictly) ---\n"
+    "1. Prefer the Retrieved Context above general knowledge when they overlap; "
+    "if the context contradicts your general knowledge, trust the context - it "
+    "is the student's actual course material.\n"
+    "2. If the Retrieved Context is empty or does not contain enough information "
+    "to answer confidently, say so explicitly (e.g. \"Your uploaded material "
+    "doesn't cover this\") instead of inventing specifics.\n"
+    "3. Never fabricate exact numbers, dates, citations, formulas, or quotations "
+    "that do not appear in the Retrieved Context or conversation history - "
+    "general, well-established facts are fine, but precise-sounding details "
+    "that you are not actually sure of are not.\n"
+    "--- End Grounding Rules ---\n"
+)
+
+
+def grounding_note(context: list[dict], response: str, min_score: float | None = None) -> str | None:
+    """Return a caveat to append when a subject-grounded answer looks weakly sourced.
+
+    Two independent signals, either being true is enough to add the caveat:
+    (a) retrieval genuinely found nothing relevant (empty context / all scores
+        below threshold) while the response reads as a confident, unhedged
+        answer, or (b) the response shares almost no vocabulary with the
+        retrieved chunks, suggesting the model drifted away from the source
+        material despite it being available. This is a lightweight lexical
+        check, not a full fact-checker - it catches gross hallucination risk,
+        not subtle errors.
+    """
+    if not response or any(m in response.lower() for m in _HEDGE_MARKERS):
+        return None
+
+    if not context:
+        return None  # no subject material at all (e.g. general chit-chat); not our call to flag
+
+    min_score = settings.RAG_MIN_GROUNDING_SCORE if min_score is None else min_score
+    best_score = max((c.get("score") or 0.0 for c in context), default=0.0)
+    if best_score < min_score:
+        return (
+            "\n\n_Confidence note: this answer is only weakly supported by your "
+            "uploaded course material (best match score "
+            f"{best_score:.2f}). Treat specifics with caution and consider "
+            "asking your instructor or checking a primary source._"
+        )
+
+    context_text = " ".join(c.get("text", "") for c in context).lower()
+    context_words = set(re.findall(r"[a-z]{4,}", context_text))
+    response_words = set(re.findall(r"[a-z]{4,}", response.lower()))
+    if context_words and response_words:
+        overlap = len(context_words & response_words) / max(1, len(response_words))
+        if overlap < 0.08:
+            return (
+                "\n\n_Confidence note: this answer doesn't closely match the "
+                "retrieved course material - double-check the specifics before "
+                "relying on them._"
+            )
+    return None
 
 
 def match_concepts_in_text(
@@ -221,45 +297,39 @@ class BaseAgent:
                 f"{genome_summary}\n--- End Learning Genome ---\n"
             )
 
-        return f"{self.system_prompt}\n{context_text}\n{inter_agent_text}\n{genome_text}\n{history_text}\nStudent: {user_message}"
+        return (
+            f"{self.system_prompt}\n{context_text}\n{GROUNDING_INSTRUCTION}"
+            f"\n{inter_agent_text}\n{genome_text}\n{history_text}\nStudent: {user_message}"
+        )
 
     async def reason(self, state: AgentState, context: list[dict]) -> str:
-        model = get_gemini_model()
+        provider = get_llm_provider()
         full_prompt = self._build_full_prompt(state, context)
 
         try:
-            response = model.generate_content(
-                full_prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=4096,
-                ),
-            )
-            return response.text
+            response = provider.generate(full_prompt, temperature=0.7, max_tokens=4096)
+            note = grounding_note(context, response, settings.RAG_MIN_GROUNDING_SCORE)
+            return response + note if note else response
         except Exception as e:
-            logger.error("agent_reason_failed", agent=self.name, error=str(e))
+            logger.error("agent_reason_failed", agent=self.name, provider=provider.name, error=str(e))
             return describe_llm_error(e)
 
     async def _reason_stream(
         self, state: AgentState, context: list[dict]
     ) -> AsyncGenerator[str, None]:
-        model = get_gemini_model()
+        provider = get_llm_provider()
         full_prompt = self._build_full_prompt(state, context)
 
+        full_response = ""
         try:
-            response = model.generate_content(
-                full_prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=4096,
-                ),
-                stream=True,
-            )
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
+            async for token in provider.generate_stream(full_prompt, temperature=0.7, max_tokens=4096):
+                full_response += token
+                yield token
+            note = grounding_note(context, full_response, settings.RAG_MIN_GROUNDING_SCORE)
+            if note:
+                yield note
         except Exception as e:
-            logger.error("agent_stream_failed", agent=self.name, error=str(e))
+            logger.error("agent_stream_failed", agent=self.name, provider=provider.name, error=str(e))
             yield describe_llm_error(e)
 
     async def assess_understanding(

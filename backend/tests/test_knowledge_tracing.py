@@ -5,6 +5,7 @@ file can run without the full backend dependency chain (asyncpg, etc.).
 """
 
 import math
+from collections import defaultdict
 
 # ---------- Inlined from app.services.knowledge_tracing ----------
 
@@ -60,6 +61,102 @@ def days_until_forgetting(stability: float,
     if stability <= 0:
         return 0.0
     return -stability * math.log(threshold)
+
+
+def _forward_backward(obs, p_l0, p_t, p_s, p_g):
+    n = len(obs)
+    if n == 0:
+        return []
+
+    def emit(learned, correct):
+        if learned:
+            return (1 - p_s) if correct else p_s
+        return p_g if correct else (1 - p_g)
+
+    alpha = [[0.0, 0.0] for _ in range(n)]
+    scales = [0.0] * n
+    alpha[0][0] = (1 - p_l0) * emit(False, obs[0])
+    alpha[0][1] = p_l0 * emit(True, obs[0])
+    scales[0] = alpha[0][0] + alpha[0][1] or 1.0
+    alpha[0][0] /= scales[0]
+    alpha[0][1] /= scales[0]
+
+    for t in range(1, n):
+        pred_unlearned = alpha[t - 1][0] * (1 - p_t)
+        pred_learned = alpha[t - 1][0] * p_t + alpha[t - 1][1]
+        alpha[t][0] = pred_unlearned * emit(False, obs[t])
+        alpha[t][1] = pred_learned * emit(True, obs[t])
+        scales[t] = alpha[t][0] + alpha[t][1] or 1.0
+        alpha[t][0] /= scales[t]
+        alpha[t][1] /= scales[t]
+
+    beta = [[1.0, 1.0] for _ in range(n)]
+    for t in range(n - 2, -1, -1):
+        e0 = emit(False, obs[t + 1])
+        e1 = emit(True, obs[t + 1])
+        beta[t][0] = ((1 - p_t) * e0 * beta[t + 1][0] + p_t * e1 * beta[t + 1][1]) / scales[t + 1]
+        beta[t][1] = (e1 * beta[t + 1][1]) / scales[t + 1]
+
+    gamma = []
+    for t in range(n):
+        u = alpha[t][0] * beta[t][0]
+        l = alpha[t][1] * beta[t][1]
+        total = (u + l) or 1.0
+        gamma.append(l / total)
+    return gamma
+
+
+def _em_fit(sequences, difficulty_tiers, iterations=8):
+    p_l0, p_t_default, p_s, p_g = BKT_P_L0, BKT_P_TRANSIT, BKT_P_SLIP, BKT_P_GUESS
+    p_transit_by_tier = {1: 0.20, 2: 0.15, 3: 0.10}
+
+    for _ in range(iterations):
+        l0_sum = 0.0
+        n_seqs = 0
+        learned_correct = 0.0
+        learned_total = 0.0
+        unlearned_correct = 0.0
+        unlearned_total = 0.0
+        transit_num = defaultdict(float)
+        transit_den = defaultdict(float)
+
+        for obs, tiers in zip(sequences, difficulty_tiers):
+            if not obs:
+                continue
+            gamma = _forward_backward(obs, p_l0, p_t_default, p_s, p_g)
+            l0_sum += gamma[0]
+            n_seqs += 1
+
+            for t, (correct, tier) in enumerate(zip(obs, tiers)):
+                p_learned = gamma[t]
+                p_unlearned = 1 - p_learned
+                if correct:
+                    learned_correct += p_learned
+                    unlearned_correct += p_unlearned
+                learned_total += p_learned
+                unlearned_total += p_unlearned
+                if t > 0:
+                    prev_unlearned = 1 - gamma[t - 1]
+                    transit_num[tier] += prev_unlearned * p_learned
+                    transit_den[tier] += prev_unlearned
+
+        if n_seqs == 0:
+            break
+
+        p_l0 = min(0.95, max(0.02, l0_sum / n_seqs))
+        p_s = min(0.45, max(0.01, 1 - (learned_correct / learned_total))) if learned_total > 0 else p_s
+        p_g = min(0.45, max(0.01, unlearned_correct / unlearned_total)) if unlearned_total > 0 else p_g
+        for tier in (1, 2, 3):
+            if transit_den.get(tier, 0) > 0:
+                p_transit_by_tier[tier] = min(0.6, max(0.02, transit_num[tier] / transit_den[tier]))
+        p_t_default = p_transit_by_tier[1]
+
+    return {
+        "p_l0": round(p_l0, 4),
+        "p_slip": round(p_s, 4),
+        "p_guess": round(p_g, 4),
+        "p_transit": {k: round(v, 4) for k, v in p_transit_by_tier.items()},
+    }
 
 # ---------- End inlined ----------
 
@@ -142,3 +239,55 @@ class TestForgettingCurve:
         t_low = days_until_forgetting(2.0)
         t_high = days_until_forgetting(20.0)
         assert t_high > t_low
+
+
+class TestForwardBackward:
+    def test_output_length_matches_input(self):
+        gamma = _forward_backward([True, True, False, True], 0.1, 0.15, 0.1, 0.2)
+        assert len(gamma) == 4
+
+    def test_all_correct_pushes_belief_up(self):
+        gamma = _forward_backward([True] * 6, 0.1, 0.15, 0.1, 0.2)
+        assert gamma[-1] > gamma[0]
+
+    def test_all_incorrect_keeps_belief_low(self):
+        gamma = _forward_backward([False] * 6, 0.1, 0.15, 0.1, 0.2)
+        assert gamma[-1] < 0.3
+
+    def test_probabilities_bounded(self):
+        gamma = _forward_backward([True, False, True, False, True], 0.3, 0.2, 0.15, 0.25)
+        assert all(0.0 <= g <= 1.0 for g in gamma)
+
+    def test_empty_sequence_returns_empty(self):
+        assert _forward_backward([], 0.1, 0.15, 0.1, 0.2) == []
+
+
+class TestEMFit:
+    def test_fits_all_expected_keys(self):
+        sequences = [[True, True, True, True, True, True], [False, True, True, True, True]]
+        tiers = [[1] * 6, [1] * 5]
+        result = _em_fit(sequences, tiers, iterations=3)
+        assert set(result.keys()) == {"p_l0", "p_slip", "p_guess", "p_transit"}
+        assert set(result["p_transit"].keys()) == {1, 2, 3}
+
+    def test_fitted_probabilities_are_valid(self):
+        sequences = [[True, False, True, True, False, True, True, True]]
+        tiers = [[1] * 8]
+        result = _em_fit(sequences, tiers, iterations=5)
+        assert 0.0 <= result["p_l0"] <= 1.0
+        assert 0.0 <= result["p_slip"] <= 1.0
+        assert 0.0 <= result["p_guess"] <= 1.0
+        for v in result["p_transit"].values():
+            assert 0.0 <= v <= 1.0
+
+    def test_consistently_correct_student_fits_low_slip(self):
+        # A student who is essentially always right once past the first
+        # couple of attempts should fit a low slip probability.
+        sequences = [[False, True, True, True, True, True, True, True, True, True]] * 3
+        tiers = [[1] * 10] * 3
+        result = _em_fit(sequences, tiers, iterations=8)
+        assert result["p_slip"] < 0.3
+
+    def test_empty_sequences_returns_defaults_without_crashing(self):
+        result = _em_fit([[]], [[]], iterations=3)
+        assert result["p_l0"] == BKT_P_L0

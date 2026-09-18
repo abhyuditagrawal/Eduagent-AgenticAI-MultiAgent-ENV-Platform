@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.chat import Conversation, Message
 from app.models.student import StudentConcept
 from app.models.genome import LearningGenome
+from app.models.study import StudyRoomMember
+from app.models.annotation import MaterialAnnotation
 from app.services.llm import get_gemini_model
 
 logger = structlog.get_logger()
@@ -140,6 +142,50 @@ async def _compute_persistence(db: AsyncSession, student_id) -> float:
     return round(len(revisited) / len(weak), 3)
 
 
+async def _compute_social_signals(db: AsyncSession, student_id) -> dict:
+    """Peer-collaboration signals (Future Work item #7: extend the genome
+    with social learning patterns from study room interactions).
+
+    Two durable, queryable proxies for peer engagement: study-room
+    membership (group study sessions) and authored material annotations
+    (collaborative note-taking). Peer-debate participation is intentionally
+    not included here - that mode is currently ephemeral (in-memory, per
+    room) rather than persisted, so it isn't a queryable signal yet.
+    """
+    room_result = await db.execute(
+        select(func.count()).select_from(StudyRoomMember).where(
+            StudyRoomMember.user_id == student_id
+        )
+    )
+    room_count = room_result.scalar() or 0
+
+    annotation_result = await db.execute(
+        select(func.count()).select_from(MaterialAnnotation).where(
+            MaterialAnnotation.author_id == student_id
+        )
+    )
+    annotation_count = annotation_result.scalar() or 0
+
+    if room_count == 0 and annotation_count == 0:
+        return {"collaboration_score": None, "peer_sessions_count": 0, "social_summary": None}
+
+    # Diminishing-returns scaling: a handful of sessions/annotations already
+    # signals meaningful collaboration; scores saturate rather than growing unbounded.
+    score = min(1.0, room_count * 0.15 + annotation_count * 0.05)
+    parts = []
+    if room_count:
+        parts.append(f"joined {room_count} collaborative study session{'s' if room_count != 1 else ''}")
+    if annotation_count:
+        parts.append(f"contributed {annotation_count} shared material annotation{'s' if annotation_count != 1 else ''}")
+    summary = "This student has " + " and ".join(parts) + "."
+
+    return {
+        "collaboration_score": round(score, 3),
+        "peer_sessions_count": room_count,
+        "social_summary": summary,
+    }
+
+
 async def _llm_misconceptions(user_texts: list[str]) -> dict:
     if len(user_texts) < 3:
         return {"misconceptions": [], "strengths": []}
@@ -167,7 +213,8 @@ async def _llm_misconceptions(user_texts: list[str]) -> dict:
 
 
 def _build_summary(pace_label: str | None, modality: str | None, optimal_hour: int | None,
-                   persistence: float | None, misconceptions: list[str]) -> str:
+                   persistence: float | None, misconceptions: list[str],
+                   social_summary: str | None = None) -> str:
     """Describe only the traits actually observed; stay silent about the rest."""
     parts = []
 
@@ -198,6 +245,8 @@ def _build_summary(pace_label: str | None, modality: str | None, optimal_hour: i
         parts.append("Move briskly, offer challenge extensions, and avoid over-explaining basics.")
     if misconceptions:
         parts.append("Watch for these recurring misconceptions: " + "; ".join(misconceptions) + ".")
+    if social_summary:
+        parts.append(social_summary)
     return " ".join(parts)
 
 
@@ -210,11 +259,12 @@ async def compute_genome(db: AsyncSession, student_id) -> LearningGenome:
     pace_label, pace_score = await _compute_pace(db, student_id)
     behaviour = await _compute_behaviour(db, student_id)
     persistence = await _compute_persistence(db, student_id)
+    social = await _compute_social_signals(db, student_id)
     llm = await _llm_misconceptions(behaviour["recent_user_texts"])
 
     summary = _build_summary(
         pace_label, behaviour["preferred_modality"], behaviour["optimal_hour"],
-        persistence, llm["misconceptions"],
+        persistence, llm["misconceptions"], social["social_summary"],
     )
 
     result = await db.execute(
@@ -235,6 +285,9 @@ async def compute_genome(db: AsyncSession, student_id) -> LearningGenome:
     genome.strengths = llm["strengths"]
     genome.summary = summary
     genome.data_points = behaviour["message_count"]
+    genome.collaboration_score = social["collaboration_score"]
+    genome.peer_sessions_count = social["peer_sessions_count"]
+    genome.social_summary = social["social_summary"]
 
     await db.commit()
     await db.refresh(genome)
@@ -270,6 +323,9 @@ def genome_to_dict(genome: LearningGenome) -> dict:
         "misconception_patterns": genome.misconception_patterns or [],
         "strengths": genome.strengths or [],
         "summary": genome.summary or "",
+        "collaboration_score": _round_or_none(genome.collaboration_score, 3),
+        "peer_sessions_count": genome.peer_sessions_count,
+        "social_summary": genome.social_summary or "",
         "data_points": genome.data_points,
         "updated_at": genome.updated_at.isoformat() if genome.updated_at else None,
     }

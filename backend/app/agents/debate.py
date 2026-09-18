@@ -68,6 +68,22 @@ Skeptic:
 Write the consensus answer for the student (4-7 sentences), then the confidence line."""
 
 
+PEER_JUDGE_PROMPT = """You are moderating a debate between two students on the topic below, for the subject "{subject}". You are an encouraging but rigorous AI moderator.
+
+{context}
+
+Topic / Question: {topic}
+
+{arguments_text}
+
+Write a moderation verdict that:
+1. Names one clear strength in EACH student's argument (be specific, quote a phrase if useful).
+2. Identifies which position is better supported by the course material and reasoning, or says it's a genuine tie.
+3. Notes anything either side got factually wrong or oversimplified, grounded in the course material above if provided.
+4. Ends with a one-line "Confidence: High/Medium/Low" rating.
+Keep it to 5-8 sentences, addressed to both students by name where given."""
+
+
 def _format_context(chunks: list[dict]) -> str:
     if not chunks:
         return ""
@@ -163,3 +179,39 @@ async def run_debate_stream(
     yield ("turn", {"role": "judge", "label": "Judge — Consensus", "content": judge})
 
     yield ("done", {"consensus": judge})
+
+
+async def judge_peer_debate(
+    topic: str,
+    arguments: list[dict],
+    subject_code: str | None = None,
+    subject_name: str | None = None,
+) -> str:
+    """AI-moderated verdict for a two-(or-more)-student peer debate.
+
+    `arguments` is a list of {"name": str, "content": str} - one per student
+    who has submitted a position on `topic`. Unlike run_debate_stream (which
+    pits two AI personas against each other), both sides here are written by
+    real students; the AI's only role is neutral moderation.
+    """
+    subject = subject_name or "this subject"
+    context_chunks: list[dict] = []
+    if subject_code:
+        try:
+            context_chunks = retrieve(topic, subject_code, top_k=4)
+        except Exception as e:
+            logger.warning("peer_debate_rag_failed", error=str(e))
+    context = _format_context(context_chunks)
+
+    arguments_text = "\n\n".join(
+        f"{a.get('name', 'A student')}'s position:\n{a.get('content', '')}"
+        for a in arguments
+    )
+
+    return await _generate(
+        PEER_JUDGE_PROMPT.format(
+            subject=subject, context=context, topic=topic,
+            arguments_text=arguments_text,
+        ),
+        temperature=0.4,
+    )

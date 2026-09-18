@@ -5,6 +5,7 @@ import structlog
 import google.generativeai as genai
 
 from app.config import get_settings
+from app.services.llm_provider import get_llm_provider
 
 settings = get_settings()
 logger = structlog.get_logger()
@@ -13,6 +14,12 @@ _model = None
 
 
 def get_gemini_model():
+    """Direct Gemini SDK handle, for call sites not yet on the provider abstraction.
+
+    New code should prefer get_llm_provider() (app.services.llm_provider), which
+    is swappable via LLM_PROVIDER; this stays for the handful of Gemini-specific
+    call sites (e.g. structured-output prompts) that haven't been migrated yet.
+    """
     global _model
     if _model is None:
         genai.configure(api_key=settings.GEMINI_API_KEY)
@@ -61,29 +68,24 @@ async def generate_response(
     conversation_history: list[dict] | None = None,
     system_prompt: str | None = None,
 ) -> str:
-    model = get_gemini_model()
+    provider = get_llm_provider()
     full_prompt = _build_prompt(user_message, system_prompt, context_chunks, conversation_history)
 
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(
-                full_prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=4096,
-                ),
-            )
-            return response.text
+            return provider.generate(full_prompt, temperature=0.7, max_tokens=4096)
         except Exception as e:
-            logger.warning("gemini_api_error", attempt=attempt, error=str(e))
+            logger.warning("llm_provider_error", provider=provider.name, attempt=attempt, error=str(e))
             if attempt < max_retries - 1:
                 # Blocking here would stall every other request in the
                 # process for the whole backoff, and 429s are routine on
                 # the free tier.
                 await asyncio.sleep(2 ** attempt)
             else:
-                raise RuntimeError(f"Failed to get response from Gemini after {max_retries} retries: {e}")
+                raise RuntimeError(
+                    f"Failed to get response from {provider.name} after {max_retries} retries: {e}"
+                )
 
 
 async def generate_response_stream(
@@ -92,21 +94,12 @@ async def generate_response_stream(
     conversation_history: list[dict] | None = None,
     system_prompt: str | None = None,
 ) -> AsyncGenerator[str, None]:
-    model = get_gemini_model()
+    provider = get_llm_provider()
     full_prompt = _build_prompt(user_message, system_prompt, context_chunks, conversation_history)
 
     try:
-        response = model.generate_content(
-            full_prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.7,
-                max_output_tokens=4096,
-            ),
-            stream=True,
-        )
-        for chunk in response:
-            if chunk.text:
-                yield chunk.text
+        async for token in provider.generate_stream(full_prompt, temperature=0.7, max_tokens=4096):
+            yield token
     except Exception as e:
-        logger.error("gemini_stream_error", error=str(e))
+        logger.error("llm_provider_stream_error", provider=provider.name, error=str(e))
         raise RuntimeError(f"Streaming failed: {e}")

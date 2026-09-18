@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { Loader2, Brain, AlertTriangle, TrendingDown, Activity } from "lucide-react";
+import { Loader2, Brain, AlertTriangle, TrendingDown, Activity, Sparkles, Target } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -15,6 +15,8 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import api from "@/lib/api";
 
 interface SubjectInfo {
@@ -43,6 +45,20 @@ interface ForecastDay {
   count: number;
 }
 
+interface OutcomePrediction {
+  exam_date: string;
+  horizon_days: number;
+  predicted_score: number | null;
+  predicted_score_pct?: number;
+  readiness_label?: string;
+  at_risk_count: number;
+}
+
+interface BktParams {
+  personalized: boolean;
+  n_observations?: number;
+}
+
 export default function KnowledgeTracingPage() {
   const { data: session } = useSession();
   const [subjects, setSubjects] = useState<SubjectInfo[]>([]);
@@ -52,14 +68,63 @@ export default function KnowledgeTracingPage() {
   const [atRiskNow, setAtRiskNow] = useState<MasteryRow[]>([]);
   const [avgMastery, setAvgMastery] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [outcome, setOutcome] = useState<OutcomePrediction | null>(null);
+  const [bktParams, setBktParams] = useState<BktParams | null>(null);
+  const [fitting, setFitting] = useState(false);
 
   useEffect(() => {
     if (session?.accessToken) loadSubjects();
   }, [session?.accessToken]);
 
   useEffect(() => {
-    if (selectedSubject) loadData(selectedSubject);
+    if (selectedSubject) {
+      loadData(selectedSubject);
+      loadOutcome(selectedSubject);
+    }
   }, [selectedSubject]);
+
+  useEffect(() => {
+    if (session?.accessToken) loadBktParams();
+  }, [session?.accessToken]);
+
+  const loadBktParams = async () => {
+    try {
+      const res = await api.get("/api/knowledge-tracing/params");
+      setBktParams(res.data);
+    } catch {
+      setBktParams(null);
+    }
+  };
+
+  const loadOutcome = async (subjectId: string) => {
+    try {
+      const res = await api.get(`/api/knowledge-tracing/outcome-prediction?subject_id=${subjectId}`);
+      setOutcome(res.data);
+    } catch {
+      setOutcome(null);
+    }
+  };
+
+  const fitPersonalizedParams = async () => {
+    setFitting(true);
+    try {
+      const res = await api.post("/api/knowledge-tracing/fit-params");
+      if (res.data.fitted) {
+        toast.success(
+          `Personalised BKT parameters fitted from ${res.data.n_observations} observations across ${res.data.n_concepts} concepts.`
+        );
+        await loadBktParams();
+      } else {
+        toast.info(
+          `Not enough data yet (${res.data.n_observations}/${res.data.min_required} observations) — keep practising to unlock personalised calibration.`
+        );
+      }
+    } catch {
+      toast.error("Couldn't fit personalised parameters right now.");
+    } finally {
+      setFitting(false);
+    }
+  };
 
   const loadSubjects = async () => {
     try {
@@ -114,15 +179,25 @@ export default function KnowledgeTracingPage() {
             Bayesian mastery &amp; predictive forgetting
           </span>
         </h1>
-        <Tabs value={selectedSubject || ""} onValueChange={setSelectedSubject}>
-          <TabsList>
-            {subjects.map((s) => (
-              <TabsTrigger key={s.id} value={s.id}>
-                {s.code}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-3">
+          <Tabs value={selectedSubject || ""} onValueChange={setSelectedSubject}>
+            <TabsList>
+              {subjects.map((s) => (
+                <TabsTrigger key={s.id} value={s.id}>
+                  {s.code}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <Button size="sm" variant="outline" onClick={fitPersonalizedParams} disabled={fitting}>
+            {fitting ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
+            )}
+            {bktParams?.personalized ? "Re-fit My Model" : "Personalize My Model"}
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -168,11 +243,43 @@ export default function KnowledgeTracingPage() {
               <CardContent>
                 <p className="text-3xl font-bold">{mastery.length}</p>
                 <p className="text-xs text-muted-foreground">
-                  Modelled with a Hidden Markov Model
+                  {bktParams?.personalized
+                    ? `Personalised model (${bktParams.n_observations} observations)`
+                    : "Modelled with a Hidden Markov Model"}
                 </p>
               </CardContent>
             </Card>
           </div>
+
+          {/* Learning outcome prediction */}
+          {outcome && outcome.predicted_score !== null && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Target className="h-4 w-4" /> Predicted Assessment Readiness
+                  <span className="text-xs font-normal text-muted-foreground ml-1">
+                    (if tested {outcome.horizon_days.toFixed(0)} days from now)
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex items-center gap-6">
+                <p
+                  className="text-4xl font-bold"
+                  style={{ color: masteryColor((outcome.predicted_score ?? 0)) }}
+                >
+                  {outcome.predicted_score_pct?.toFixed(0)}%
+                </p>
+                <div className="text-sm">
+                  <p className="font-medium capitalize">{outcome.readiness_label} readiness</p>
+                  <p className="text-muted-foreground text-xs">
+                    Projected from your current mastery and forgetting-curve trajectory.
+                    {outcome.at_risk_count > 0 &&
+                      ` ${outcome.at_risk_count} concept(s) are projected to be at risk by then.`}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Mastery bar chart */}
           {chartData.length > 0 && (

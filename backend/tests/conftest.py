@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import uuid
 from typing import AsyncGenerator
 
@@ -6,6 +7,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.database import Base, get_db
 from app.config import get_settings
@@ -13,13 +15,25 @@ from app.main import app
 from app.models.user import User
 from app.services.auth import hash_password, create_access_token
 
+# asyncpg needs raw socket operations that Windows' default ProactorEventLoop
+# doesn't support, so tests fail (not the app - this only affects running
+# pytest directly on native Windows Python; Docker's Linux containers don't
+# need this). See https://github.com/MagicStack/asyncpg/issues/959.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 settings = get_settings()
 
 # Use the same database but with a test schema approach
 # For simplicity, use the existing database with cleanup
 TEST_DATABASE_URL = settings.DATABASE_URL
 
-test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+# NullPool: pytest-asyncio gives each test function its own event loop, but a
+# pooled asyncpg connection is bound to the loop that created it. Reusing one
+# across tests/loops corrupts the connection ("another operation is in
+# progress"). NullPool opens a fresh connection per checkout instead of
+# recycling one tied to a now-dead loop.
+test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
 test_session_factory = async_sessionmaker(
     test_engine, class_=AsyncSession, expire_on_commit=False
 )

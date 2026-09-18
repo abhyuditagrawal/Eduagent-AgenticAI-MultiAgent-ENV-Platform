@@ -2,7 +2,7 @@ import re
 
 import structlog
 
-from app.agents.base import BaseAgent, match_concepts_in_text
+from app.agents.base import BaseAgent, match_concepts_in_text, GROUNDING_INSTRUCTION, grounding_note
 from app.agents.state import AgentState
 from app.rag.retriever import retrieve
 
@@ -118,8 +118,7 @@ class CritiqueAgent(BaseAgent):
         return chunks[:8]
 
     async def reason(self, state: AgentState, context: list[dict]) -> str:
-        from app.services.llm import get_gemini_model
-        import google.generativeai as genai
+        from app.services.llm_provider import get_llm_provider
 
         subject_name = state.get("subject_name", "the subject")
 
@@ -138,19 +137,18 @@ class CritiqueAgent(BaseAgent):
         messages = state.get("messages", [])
         user_message = messages[-1] if isinstance(messages[-1], str) else messages[-1].get("content", "")
 
-        full_prompt = f"{system_prompt}\n\n--- Student's Submission ---\n{user_message}\n--- End Submission ---"
+        full_prompt = (
+            f"{system_prompt}{GROUNDING_INSTRUCTION}\n\n--- Student's Submission ---\n"
+            f"{user_message}\n--- End Submission ---"
+        )
 
-        model = get_gemini_model()
+        provider = get_llm_provider()
         try:
-            response = model.generate_content(
-                full_prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.5, max_output_tokens=4096
-                ),
-            )
-            return response.text
+            response = provider.generate(full_prompt, temperature=0.5, max_tokens=4096)
+            note = grounding_note(context, response)
+            return response + note if note else response
         except Exception as e:
-            logger.error("critique_reason_failed", error=str(e))
+            logger.error("critique_reason_failed", provider=provider.name, error=str(e))
             return "I apologize, but I encountered an error reviewing your submission. Please try again."
 
     async def assess_understanding(

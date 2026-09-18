@@ -24,13 +24,17 @@ async def test_create_subject_admin(client: AsyncClient, admin_token: str):
 
 
 @pytest.mark.asyncio
-async def test_create_subject_student_forbidden(client: AsyncClient, student_token: str):
+async def test_create_subject_student_allowed(client: AsyncClient, student_token: str):
+    # Subjects are dynamic/self-service: any authenticated user (student or
+    # admin) can create one - see routers/subjects.py's create_subject,
+    # which depends only on get_current_user, not get_admin_user.
     resp = await client.post(
         "/api/subjects",
-        json={"code": "NOPE", "name": "Nope", "description": "Should fail"},
+        json={"code": "STUDENT_MADE", "name": "Student Made", "description": "Created by a student"},
         headers=auth_header(student_token),
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 201
+    assert resp.json()["code"] == "STUDENT_MADE"
 
 
 @pytest.mark.asyncio

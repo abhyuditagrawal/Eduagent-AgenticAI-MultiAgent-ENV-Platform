@@ -20,7 +20,8 @@ MODALITY_LABELS = {
 
 
 def _build_summary(pace_label: str, modality: str, optimal_hour: int,
-                   persistence: float, misconceptions: list[str]) -> str:
+                   persistence: float, misconceptions: list[str],
+                   social_summary: str | None = None) -> str:
     modality_h = MODALITY_LABELS.get(modality, modality)
     persistence_h = (
         "high" if persistence >= 0.66 else "moderate" if persistence >= 0.33 else "low"
@@ -35,7 +36,16 @@ def _build_summary(pace_label: str, modality: str, optimal_hour: int,
         parts.append("Move briskly, offer challenge extensions, and avoid over-explaining basics.")
     if misconceptions:
         parts.append("Watch for these recurring misconceptions: " + "; ".join(misconceptions) + ".")
+    if social_summary:
+        parts.append(social_summary)
     return " ".join(parts)
+
+
+def _compute_collaboration_score(room_count: int, annotation_count: int) -> float | None:
+    """Inlined from app.services.learning_genome._compute_social_signals's scoring formula."""
+    if room_count == 0 and annotation_count == 0:
+        return None
+    return round(min(1.0, room_count * 0.15 + annotation_count * 0.05), 3)
 
 # ---------- End inlined ----------
 
@@ -78,6 +88,33 @@ class TestBuildSummary:
         s = _build_summary("average", "general", 18, 0.5, ["A", "B"])
         assert "A" in s and "B" in s
         assert "misconceptions" in s.lower()
+
+
+class TestSocialSignals:
+    def test_no_activity_returns_none(self):
+        assert _compute_collaboration_score(0, 0) is None
+
+    def test_room_sessions_increase_score(self):
+        low = _compute_collaboration_score(1, 0)
+        high = _compute_collaboration_score(5, 0)
+        assert high > low
+
+    def test_annotations_increase_score(self):
+        assert _compute_collaboration_score(0, 3) > 0
+
+    def test_score_saturates_at_one(self):
+        assert _compute_collaboration_score(20, 20) == 1.0
+
+    def test_social_summary_appended_to_genome_summary(self):
+        s = _build_summary(
+            "average", "general", 18, 0.5, [],
+            social_summary="This student has joined 3 collaborative study sessions.",
+        )
+        assert "joined 3 collaborative study sessions" in s
+
+    def test_no_social_summary_omits_sentence(self):
+        s = _build_summary("average", "general", 18, 0.5, [], social_summary=None)
+        assert "collaborative" not in s
 
 
 class TestModalityLabels:

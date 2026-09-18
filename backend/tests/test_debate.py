@@ -48,6 +48,29 @@ Skeptic:
 Write the consensus answer for the student (4-7 sentences), then the confidence line."""
 
 
+PEER_JUDGE_PROMPT = """You are moderating a debate between two students on the topic below, for the subject "{subject}". You are an encouraging but rigorous AI moderator.
+
+{context}
+
+Topic / Question: {topic}
+
+{arguments_text}
+
+Write a moderation verdict that:
+1. Names one clear strength in EACH student's argument (be specific, quote a phrase if useful).
+2. Identifies which position is better supported by the course material and reasoning, or says it's a genuine tie.
+3. Notes anything either side got factually wrong or oversimplified, grounded in the course material above if provided.
+4. Ends with a one-line "Confidence: High/Medium/Low" rating.
+Keep it to 5-8 sentences, addressed to both students by name where given."""
+
+
+def _format_arguments(arguments: list[dict]) -> str:
+    return "\n\n".join(
+        f"{a.get('name', 'A student')}'s position:\n{a.get('content', '')}"
+        for a in arguments
+    )
+
+
 def _format_context(chunks: list[dict]) -> str:
     if not chunks:
         return ""
@@ -122,3 +145,43 @@ class TestPromptTemplates:
         )
         assert "HCI" in text
         assert "UX is design" in text
+
+
+class TestPeerDebate:
+    def test_peer_judge_prompt_has_placeholders(self):
+        assert "{subject}" in PEER_JUDGE_PROMPT
+        assert "{topic}" in PEER_JUDGE_PROMPT
+        assert "{arguments_text}" in PEER_JUDGE_PROMPT
+
+    def test_format_arguments_includes_both_students(self):
+        args = [
+            {"name": "alice@test.com", "content": "I think X because Y."},
+            {"name": "bob@test.com", "content": "I disagree, Z matters more."},
+        ]
+        text = _format_arguments(args)
+        assert "alice@test.com" in text
+        assert "bob@test.com" in text
+        assert "I think X because Y." in text
+        assert "I disagree, Z matters more." in text
+
+    def test_format_arguments_handles_missing_name(self):
+        text = _format_arguments([{"content": "anonymous take"}])
+        assert "A student's position" in text
+        assert "anonymous take" in text
+
+    def test_format_arguments_empty_list(self):
+        assert _format_arguments([]) == ""
+
+    def test_peer_judge_prompt_renders(self):
+        args_text = _format_arguments([
+            {"name": "alice", "content": "position A"},
+            {"name": "bob", "content": "position B"},
+        ])
+        text = PEER_JUDGE_PROMPT.format(
+            subject="OS", context="", topic="Is preemptive scheduling always better?",
+            arguments_text=args_text,
+        )
+        assert "OS" in text
+        assert "position A" in text
+        assert "position B" in text
+        assert "Confidence: High/Medium/Low" in text
