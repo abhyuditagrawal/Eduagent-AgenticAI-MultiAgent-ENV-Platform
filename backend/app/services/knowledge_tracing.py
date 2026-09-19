@@ -557,6 +557,7 @@ async def get_effective_bkt_params(db: AsyncSession, student_id) -> dict:
             "p_slip": BKT_P_SLIP,
             "p_guess": BKT_P_GUESS,
             "p_transit": {1: 0.20, 2: 0.15, 3: 0.10},
+            "n_observations": row.n_observations if row is not None else 0,
         }
 
     return {
@@ -569,4 +570,6 @@ async def get_effective_bkt_params(db: AsyncSession, student_id) -> dict:
             2: row.p_transit_tier2 if row.p_transit_tier2 is not None else 0.15,
             3: row.p_transit_tier3 if row.p_transit_tier3 is not None else 0.10,
         },
+        "n_observations": row.n_observations,
+        "fitted_at": row.fitted_at.isoformat() if row.fitted_at else None,
     }

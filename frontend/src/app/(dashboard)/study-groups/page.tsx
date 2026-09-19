@@ -598,7 +598,7 @@ export default function StudyGroupsPage() {
 
   // Room list view
   return (
-    <div className="flex flex-col h-full overflow-auto p-6 space-y-6">
+    <div className="h-full min-h-0 overflow-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Users className="h-6 w-6" /> Study Groups
@@ -622,7 +622,7 @@ export default function StudyGroupsPage() {
 
       {/* Room list */}
       {rooms.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
+        <div className="flex items-center justify-center text-center text-muted-foreground py-24">
           <div>
             <Users className="h-12 w-12 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">No study rooms yet</p>

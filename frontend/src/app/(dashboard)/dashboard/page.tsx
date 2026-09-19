@@ -91,7 +91,7 @@ export default function DashboardPage() {
     : 0;
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="h-full min-h-0 overflow-auto">
       {/* Subject tabs */}
       <div className="border-b px-6 pt-4">
         <Tabs
@@ -109,11 +109,11 @@ export default function DashboardPage() {
       </div>
 
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="flex-1 p-6 space-y-6 overflow-auto">
+        <div className="p-6 space-y-6">
           {/* Top row: Overall score + Exam readiness */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Overall mastery */}

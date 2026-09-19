@@ -92,7 +92,7 @@ export default function LearningGenomePage() {
       : `${Math.round(value * 100)}%`;
 
   return (
-    <div className="flex flex-col h-full overflow-auto p-6 space-y-6">
+    <div className="h-full min-h-0 overflow-auto p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Dna className="h-6 w-6" /> Learning Genome
@@ -111,11 +111,11 @@ export default function LearningGenomePage() {
       </div>
 
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : !genome ? (
-        <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
+        <div className="flex items-center justify-center text-center text-muted-foreground py-24">
           <div>
             <Dna className="h-12 w-12 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">No genome yet</p>

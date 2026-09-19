@@ -358,11 +358,59 @@ async def seed():
             ))
 
         # --- A study plan tied to an upcoming exam ---
+        # Stored in the same {"days": [...], "generated_at": ...} shape
+        # generate_study_plan() persists, so the study-planner page's
+        # load-most-recent-plan path renders this exactly like a real
+        # LLM-generated plan rather than needing a special case for seed data.
+        plan_created = days_ago(5)
+        study_plan_days = [
+            {
+                "day": 1, "date_label": "Day 1", "focus": "Shore up Deadlocks",
+                "tasks": [
+                    {"topic": "Deadlocks", "activity": "review", "duration_minutes": 45},
+                    {"topic": "Deadlocks", "activity": "practice", "duration_minutes": 30},
+                ],
+                "priority": "high",
+            },
+            {
+                "day": 2, "date_label": "Day 2", "focus": "File Systems fundamentals",
+                "tasks": [
+                    {"topic": "File Systems", "activity": "review", "duration_minutes": 40},
+                    {"topic": "File Systems", "activity": "teach-back", "duration_minutes": 20},
+                ],
+                "priority": "high",
+            },
+            {
+                "day": 3, "date_label": "Day 3", "focus": "Unlock Disk Scheduling / I/O Management",
+                "tasks": [
+                    {"topic": "Disk Scheduling", "activity": "practice", "duration_minutes": 30},
+                    {"topic": "I/O Management", "activity": "practice", "duration_minutes": 30},
+                ],
+                "priority": "medium",
+            },
+            {
+                "day": 4, "date_label": "Day 4", "focus": "Consolidate Semaphores & Segmentation",
+                "tasks": [
+                    {"topic": "Semaphores", "activity": "review", "duration_minutes": 25},
+                    {"topic": "Segmentation", "activity": "practice", "duration_minutes": 35},
+                ],
+                "priority": "medium",
+            },
+            {
+                "day": 5, "date_label": "Day 5", "focus": "Full-syllabus refresh",
+                "tasks": [
+                    {"topic": "Processes", "activity": "review", "duration_minutes": 20},
+                    {"topic": "Synchronization", "activity": "review", "duration_minutes": 20},
+                    {"topic": "Paging", "activity": "review", "duration_minutes": 20},
+                ],
+                "priority": "low",
+            },
+        ]
         db.add(StudyPlan(
             id=uuid.uuid4(), student_id=student.id, subject_id=subject.id,
             exam_date=NOW + timedelta(days=10), study_hours_per_day=2.5,
-            plan_data={"generated_from": "seed_full_history", "focus": ["Deadlocks", "File Systems"]},
-            created_at=days_ago(5),
+            plan_data={"days": study_plan_days, "generated_at": plan_created.isoformat()},
+            created_at=plan_created,
         ))
 
         # --- A few standalone learning events (nudges, reviews) ---

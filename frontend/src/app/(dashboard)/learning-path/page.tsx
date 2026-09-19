@@ -80,13 +80,13 @@ export default function LearningPathPage() {
   const grouped = groupByDate(events);
 
   return (
-    <div className="flex flex-col h-full overflow-auto p-6 space-y-6">
+    <div className="h-full min-h-0 overflow-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold flex items-center gap-2">
         <TrendingUp className="h-6 w-6" /> Learning Path
       </h1>
 
       {events.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
+        <div className="flex items-center justify-center text-center text-muted-foreground py-24">
           <div>
             <TrendingUp className="h-12 w-12 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">Your learning journey starts here</p>

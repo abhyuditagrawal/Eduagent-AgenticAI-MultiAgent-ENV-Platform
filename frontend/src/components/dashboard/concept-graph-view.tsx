@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -155,6 +155,23 @@ export function ConceptGraphView({ nodes: graphNodes, edges: graphEdges }: Conce
     setEdges(layoutedEdges);
   }, [layoutedNodes, layoutedEdges, setNodes, setEdges]);
 
+  // React Flow ships its own light/dark stylesheet gated behind a `.dark`
+  // class on its root element, entirely separate from the app's own theme
+  // toggle (which just adds/removes `dark` on <html>). Without this, the
+  // Controls/MiniMap always render in React Flow's light-theme colours -
+  // a plain white box - regardless of the app's actual theme. Watching
+  // <html> directly (rather than reading it once) keeps this in sync when
+  // the user flips the theme toggle without a page reload.
+  const [darkMode, setDarkMode] = useState(false);
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => setDarkMode(root.classList.contains("dark"));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
   if (graphNodes.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -164,7 +181,7 @@ export function ConceptGraphView({ nodes: graphNodes, edges: graphEdges }: Conce
   }
 
   return (
-    <div className="h-full w-full">
+    <div className="h-full w-full relative">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -175,6 +192,7 @@ export function ConceptGraphView({ nodes: graphNodes, edges: graphEdges }: Conce
         minZoom={0.3}
         maxZoom={2}
         attributionPosition="bottom-left"
+        colorMode={darkMode ? "dark" : "light"}
       >
         <Background gap={16} size={1} />
         <Controls />
@@ -188,8 +206,10 @@ export function ConceptGraphView({ nodes: graphNodes, edges: graphEdges }: Conce
         />
       </ReactFlow>
 
-      {/* Legend */}
-      <div className="absolute bottom-4 right-4 bg-card/90 backdrop-blur-sm border rounded-lg p-3 space-y-1.5">
+      {/* Legend - top-right, deliberately clear of Controls (bottom-left)
+          and MiniMap (bottom-right, React Flow's own default corner) so
+          it never stacks on top of either. */}
+      <div className="absolute top-4 right-4 bg-card/90 backdrop-blur-sm border rounded-lg p-3 space-y-1.5">
         <p className="text-[10px] font-medium text-muted-foreground uppercase">Legend</p>
         {Object.entries(STATUS_COLORS).map(([status, colors]) => (
           <div key={status} className="flex items-center gap-2">

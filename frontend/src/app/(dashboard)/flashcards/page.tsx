@@ -91,7 +91,7 @@ export default function FlashcardsPage() {
   const current = cards[currentIndex];
 
   return (
-    <div className="flex flex-col h-full overflow-auto p-6 space-y-6">
+    <div className="h-full min-h-0 overflow-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Flashcards</h1>
         <div className="flex gap-2">
@@ -171,11 +171,11 @@ export default function FlashcardsPage() {
           </CardContent>
         </Card>
       ) : loading ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : cards.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
+        <div className="flex items-center justify-center text-center text-muted-foreground py-24">
           <div>
             <Brain className="h-12 w-12 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">No flashcards yet</p>

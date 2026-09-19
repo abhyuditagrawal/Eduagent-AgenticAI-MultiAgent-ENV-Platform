@@ -81,7 +81,7 @@ export default function KnowledgeFrontierPage() {
     d <= 1 ? "Foundational" : d <= 2 ? "Intermediate" : "Advanced";
 
   return (
-    <div className="flex flex-col h-full overflow-auto p-6 space-y-6">
+    <div className="h-full min-h-0 overflow-auto p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Compass className="h-6 w-6" /> Knowledge Frontier
@@ -101,11 +101,11 @@ export default function KnowledgeFrontierPage() {
       </div>
 
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex items-center justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : !data ? (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground">
+        <div className="flex items-center justify-center text-muted-foreground py-24">
           No concept data available.
         </div>
       ) : (

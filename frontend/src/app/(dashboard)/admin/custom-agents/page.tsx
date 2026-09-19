@@ -100,7 +100,7 @@ export default function CustomAgentsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-auto p-6 space-y-6">
+    <div className="h-full min-h-0 overflow-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Bot className="h-6 w-6" /> Custom Agent Builder
@@ -165,7 +165,7 @@ export default function CustomAgentsPage() {
 
       {/* Agent list */}
       {agents.length === 0 && !showCreate ? (
-        <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
+        <div className="flex items-center justify-center text-center text-muted-foreground py-24">
           <div>
             <Bot className="h-12 w-12 mx-auto mb-4 opacity-30" />
             <p className="text-lg font-medium">No custom agents yet</p>

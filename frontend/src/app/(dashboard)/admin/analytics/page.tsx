@@ -78,7 +78,7 @@ export default function AdminAnalyticsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-auto p-6 space-y-6">
+    <div className="h-full min-h-0 overflow-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold flex items-center gap-2">
         <BarChart3 className="h-6 w-6" /> Platform Analytics
       </h1>
