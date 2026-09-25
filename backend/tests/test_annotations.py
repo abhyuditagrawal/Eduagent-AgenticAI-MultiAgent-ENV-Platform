@@ -1,5 +1,7 @@
 """Integration tests for collaborative material annotations (Future Work item #9)."""
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
@@ -7,6 +9,7 @@ from tests.conftest import auth_header
 
 
 async def _make_subject(client: AsyncClient, admin_token: str, code: str) -> str:
+    code = f"{code}_{uuid.uuid4().hex[:6]}".upper()
     resp = await client.post(
         "/api/subjects",
         json={"code": code, "name": code.title()},

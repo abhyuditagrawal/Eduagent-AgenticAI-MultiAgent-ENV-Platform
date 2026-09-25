@@ -2,10 +2,16 @@
 new personalised-BKT and outcome-prediction routes (Future Work items #2, #6).
 """
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
 from tests.conftest import auth_header
+
+
+def _unique_code(base: str) -> str:
+    return f"{base}_{uuid.uuid4().hex[:6]}".upper()
 
 
 @pytest.mark.asyncio
@@ -32,7 +38,7 @@ async def test_outcome_prediction_no_concepts_yet(
 ):
     subject_resp = await client.post(
         "/api/subjects",
-        json={"code": "OUTCOME_A", "name": "Outcome A"},
+        json={"code": _unique_code("OUTCOME_A"), "name": "Outcome A"},
         headers=auth_header(admin_token),
     )
     subject_id = subject_resp.json()["id"]
@@ -53,7 +59,7 @@ async def test_outcome_prediction_with_custom_exam_date(
 ):
     subject_resp = await client.post(
         "/api/subjects",
-        json={"code": "OUTCOME_B", "name": "Outcome B"},
+        json={"code": _unique_code("OUTCOME_B"), "name": "Outcome B"},
         headers=auth_header(admin_token),
     )
     subject_id = subject_resp.json()["id"]

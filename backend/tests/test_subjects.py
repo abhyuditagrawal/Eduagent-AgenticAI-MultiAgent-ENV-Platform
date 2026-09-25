@@ -1,7 +1,15 @@
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
 from tests.conftest import auth_header
+
+
+def _unique_code(base: str) -> str:
+    # Subject.code is String(20) and the API uppercases it, so keep the
+    # suffix short and match the case the API will actually return.
+    return f"{base}_{uuid.uuid4().hex[:6]}".upper()
 
 
 @pytest.mark.asyncio
@@ -14,13 +22,14 @@ async def test_list_subjects(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_create_subject_admin(client: AsyncClient, admin_token: str):
+    code = _unique_code("TEST_SUBJ")
     resp = await client.post(
         "/api/subjects",
-        json={"code": "TEST_SUBJ", "name": "Test Subject", "description": "A test subject"},
+        json={"code": code, "name": "Test Subject", "description": "A test subject"},
         headers=auth_header(admin_token),
     )
     assert resp.status_code == 201
-    assert resp.json()["code"] == "TEST_SUBJ"
+    assert resp.json()["code"] == code
 
 
 @pytest.mark.asyncio
@@ -28,13 +37,14 @@ async def test_create_subject_student_allowed(client: AsyncClient, student_token
     # Subjects are dynamic/self-service: any authenticated user (student or
     # admin) can create one - see routers/subjects.py's create_subject,
     # which depends only on get_current_user, not get_admin_user.
+    code = _unique_code("STUDENT_MADE")
     resp = await client.post(
         "/api/subjects",
-        json={"code": "STUDENT_MADE", "name": "Student Made", "description": "Created by a student"},
+        json={"code": code, "name": "Student Made", "description": "Created by a student"},
         headers=auth_header(student_token),
     )
     assert resp.status_code == 201
-    assert resp.json()["code"] == "STUDENT_MADE"
+    assert resp.json()["code"] == code
 
 
 @pytest.mark.asyncio
@@ -42,7 +52,7 @@ async def test_enroll_in_subject(client: AsyncClient, admin_token: str, student_
     # Create a subject first
     create_resp = await client.post(
         "/api/subjects",
-        json={"code": "ENROLL_T", "name": "Enroll Test"},
+        json={"code": _unique_code("ENROLL_T"), "name": "Enroll Test"},
         headers=auth_header(admin_token),
     )
     subject_id = create_resp.json()["id"]
@@ -59,7 +69,7 @@ async def test_enroll_in_subject(client: AsyncClient, admin_token: str, student_
 async def test_double_enrollment(client: AsyncClient, admin_token: str, student_token: str):
     create_resp = await client.post(
         "/api/subjects",
-        json={"code": "DBL_ENR", "name": "Double Enroll"},
+        json={"code": _unique_code("DBL_ENR"), "name": "Double Enroll"},
         headers=auth_header(admin_token),
     )
     subject_id = create_resp.json()["id"]

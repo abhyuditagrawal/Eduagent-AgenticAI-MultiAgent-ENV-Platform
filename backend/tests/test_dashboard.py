@@ -1,7 +1,13 @@
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
 from tests.conftest import auth_header
+
+
+def _unique_code(base: str) -> str:
+    return f"{base}_{uuid.uuid4().hex[:6]}".upper()
 
 
 @pytest.mark.asyncio
@@ -11,7 +17,7 @@ async def test_mastery_endpoint_structure(
     # Create and enroll in a subject
     create_resp = await client.post(
         "/api/subjects",
-        json={"code": "DASH_M", "name": "Dashboard Mastery"},
+        json={"code": _unique_code("DASH_M"), "name": "Dashboard Mastery"},
         headers=auth_header(admin_token),
     )
     subject_id = create_resp.json()["id"]
@@ -37,7 +43,7 @@ async def test_weak_points_endpoint(
 ):
     create_resp = await client.post(
         "/api/subjects",
-        json={"code": "DASH_W", "name": "Dashboard Weak"},
+        json={"code": _unique_code("DASH_W"), "name": "Dashboard Weak"},
         headers=auth_header(admin_token),
     )
     subject_id = create_resp.json()["id"]
@@ -63,7 +69,7 @@ async def test_exam_readiness_endpoint(
 ):
     create_resp = await client.post(
         "/api/subjects",
-        json={"code": "DASH_E", "name": "Dashboard Exam"},
+        json={"code": _unique_code("DASH_E"), "name": "Dashboard Exam"},
         headers=auth_header(admin_token),
     )
     subject_id = create_resp.json()["id"]
@@ -102,7 +108,7 @@ async def test_concept_graph_endpoint(
 ):
     create_resp = await client.post(
         "/api/subjects",
-        json={"code": "DASH_G", "name": "Dashboard Graph"},
+        json={"code": _unique_code("DASH_G"), "name": "Dashboard Graph"},
         headers=auth_header(admin_token),
     )
     subject_id = create_resp.json()["id"]

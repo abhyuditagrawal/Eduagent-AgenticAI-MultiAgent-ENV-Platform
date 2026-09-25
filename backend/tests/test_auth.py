@@ -1,13 +1,19 @@
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
 from tests.conftest import auth_header
 
 
+def _unique_email(label: str) -> str:
+    return f"{label}_{uuid.uuid4().hex[:8]}@test.com"
+
+
 @pytest.mark.asyncio
 async def test_register_success(client: AsyncClient):
     resp = await client.post("/api/auth/register", json={
-        "email": "newuser_auth@test.com",
+        "email": _unique_email("newuser_auth"),
         "password": "securepass123",
         "full_name": "New User",
     })
@@ -21,7 +27,7 @@ async def test_register_success(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_register_duplicate_email(client: AsyncClient):
     payload = {
-        "email": "duplicate_auth@test.com",
+        "email": _unique_email("duplicate_auth"),
         "password": "securepass123",
         "full_name": "First User",
     }
@@ -42,7 +48,7 @@ async def test_register_invalid_email(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_login_success(client: AsyncClient):
-    email = "login_test_auth@test.com"
+    email = _unique_email("login_test_auth")
     await client.post("/api/auth/register", json={
         "email": email,
         "password": "testpass123",
@@ -59,7 +65,7 @@ async def test_login_success(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_login_wrong_password(client: AsyncClient):
-    email = "wrong_pw_auth@test.com"
+    email = _unique_email("wrong_pw_auth")
     await client.post("/api/auth/register", json={
         "email": email,
         "password": "correctpass",
