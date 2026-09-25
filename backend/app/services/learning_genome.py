@@ -43,6 +43,7 @@ MODALITY_LABELS = {
     "exam_predictor": "exam practice",
     "critique": "writing critique",
     "weak_point_tracker": "weak-point review",
+    "security_tool": "hands-on security-tool exercises",
     "general": "open-ended chat",
 }
 

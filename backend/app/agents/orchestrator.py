@@ -9,6 +9,7 @@ from app.agents.weak_point_tracker import WeakPointTrackerAgent
 from app.agents.protege import ProtegeAgent
 from app.agents.viva import VivaAgent
 from app.agents.critique import CritiqueAgent
+from app.agents.security_tools_agent import SecurityToolsAgent
 from app.agents.base import BaseAgent
 
 logger = structlog.get_logger()
@@ -20,6 +21,7 @@ weak_point_agent = WeakPointTrackerAgent()
 protege_agent = ProtegeAgent()
 viva_agent = VivaAgent()
 critique_agent = CritiqueAgent()
+security_tools_agent = SecurityToolsAgent()
 
 fallback_agent = BaseAgent()
 fallback_agent.name = "general"
@@ -73,6 +75,7 @@ def route_intent(state: AgentState) -> str:
         "teach_me": "agent_protege",
         "viva": "agent_viva",
         "critique": "agent_critique",
+        "security_tool": "agent_security_tool",
         "general": "agent_fallback",
     }
     route = routing.get(intent, "agent_fallback")
@@ -102,6 +105,10 @@ async def agent_viva_node(state: AgentState) -> AgentState:
 
 async def agent_critique_node(state: AgentState) -> AgentState:
     return await critique_agent.run(state)
+
+
+async def agent_security_tool_node(state: AgentState) -> AgentState:
+    return await security_tools_agent.run(state)
 
 
 async def agent_fallback_node(state: AgentState) -> AgentState:
@@ -138,6 +145,7 @@ def build_orchestrator_graph():
     graph.add_node("agent_protege", agent_protege_node)
     graph.add_node("agent_viva", agent_viva_node)
     graph.add_node("agent_critique", agent_critique_node)
+    graph.add_node("agent_security_tool", agent_security_tool_node)
     graph.add_node("agent_fallback", agent_fallback_node)
     graph.add_node("commit_state", commit_state_node)
     graph.add_node("format_response", format_response_node)
@@ -155,6 +163,7 @@ def build_orchestrator_graph():
             "agent_protege": "agent_protege",
             "agent_viva": "agent_viva",
             "agent_critique": "agent_critique",
+            "agent_security_tool": "agent_security_tool",
             "agent_fallback": "agent_fallback",
         },
     )
@@ -165,6 +174,7 @@ def build_orchestrator_graph():
     graph.add_edge("agent_protege", "commit_state")
     graph.add_edge("agent_viva", "commit_state")
     graph.add_edge("agent_critique", "commit_state")
+    graph.add_edge("agent_security_tool", "commit_state")
     graph.add_edge("agent_fallback", "commit_state")
     graph.add_edge("commit_state", "format_response")
     graph.add_edge("format_response", END)

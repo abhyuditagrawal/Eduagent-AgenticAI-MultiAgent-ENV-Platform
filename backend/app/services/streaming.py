@@ -32,6 +32,9 @@ def _get_agents() -> dict[str, BaseAgent]:
         _agents["viva"] = VivaAgent()
         _agents["critique"] = CritiqueAgent()
 
+        from app.agents.security_tools_agent import SecurityToolsAgent
+        _agents["security_tool"] = SecurityToolsAgent()
+
         fallback = BaseAgent()
         fallback.name = "general"
         fallback.system_prompt = (
@@ -50,6 +53,7 @@ INTENT_TO_AGENT = {
     "teach_me": "protege",
     "viva": "viva",
     "critique": "critique",
+    "security_tool": "security_tool",
     "general": "general",
 }
 

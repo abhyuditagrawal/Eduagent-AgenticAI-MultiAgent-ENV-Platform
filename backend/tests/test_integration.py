@@ -190,6 +190,14 @@ class TestIntentClassifier:
         result = classify_intent(state)
         assert result["intent"] == "conceptual_doubt"
 
+    def test_security_tool_fast_path_no_model_call(self):
+        # /commands are unambiguous - the fast path must catch them without
+        # ever touching the LLM classifier.
+        state = self._make_state("/hash sha256 password123")
+        result = classify_intent(state)
+        assert result["intent"] == "security_tool"
+        assert result["metadata"]["intent_source"] == "fast_path"
+
     @patch("app.agents.intent_classifier.get_gemini_model")
     def test_exam_prep_classification(self, mock_model):
         mock_response = MagicMock()
@@ -566,6 +574,7 @@ class TestOrchestratorGraph:
             "load_state", "classify",
             "agent_qa", "agent_exam", "agent_weak_point",
             "agent_protege", "agent_viva", "agent_critique",
+            "agent_security_tool",
             "agent_fallback", "commit_state", "format_response",
         }
         for node in expected_nodes:
@@ -580,6 +589,7 @@ class TestOrchestratorGraph:
             "teach_me": "agent_protege",
             "viva": "agent_viva",
             "critique": "agent_critique",
+            "security_tool": "agent_security_tool",
             "general": "agent_fallback",
             "unknown_intent": "agent_fallback",
         }

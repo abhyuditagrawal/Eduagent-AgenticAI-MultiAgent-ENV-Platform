@@ -16,6 +16,7 @@ logger = structlog.get_logger()
 # teach-me requests are almost always phrased with one of a handful of verbs.
 # Ambiguous phrasing still falls through to the LLM classifier below.
 _FAST_PATH_RULES: list[tuple[str, re.Pattern]] = [
+    ("security_tool", re.compile(r"^/(caesar|vigenere|freq|hash|rsa|logscan)\b", re.I)),
     ("viva", re.compile(r"\b(start|begin|do)\s+(a\s+)?(oral\s+)?viva\b|\bviva\s+(exam|practice|session)\b", re.I)),
     ("teach_me", re.compile(r"\b(let me teach|i(?:'ll| will) teach|teach you|explain (?:it|this) to you)\b", re.I)),
     ("critique", re.compile(r"\b(review|critique|grade|feedback on) (my|this|the) (essay|assignment|paper|submission)\b", re.I)),
@@ -38,6 +39,7 @@ CLASSIFICATION_PROMPT = """Classify the user's intent into exactly one of these 
 - teach_me: Offering to explain/teach a concept (Feynman technique / protege mode)
 - viva: Requesting a viva/oral exam simulation
 - critique: Submitting an essay, assignment, or long text for feedback
+- security_tool: Asking to run/use a cryptography or forensics tool (e.g. "hash this password", "decode this Caesar cipher", "generate an RSA key pair"), or a message starting with /caesar, /vigenere, /freq, /hash, /rsa, /logscan
 - general: Greetings, meta questions, off-topic
 
 User message: "{message}"
@@ -51,6 +53,7 @@ VALID_INTENTS = {
     "teach_me",
     "viva",
     "critique",
+    "security_tool",
     "general",
 }
 

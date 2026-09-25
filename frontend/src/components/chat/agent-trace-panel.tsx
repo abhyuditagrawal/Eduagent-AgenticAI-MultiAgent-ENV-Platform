@@ -5,6 +5,7 @@ import {
   FileText,
   BookOpen,
   TrendingUp,
+  Shield,
   X,
   ChevronRight,
 } from "lucide-react";
@@ -51,6 +52,12 @@ const AGENT_CONFIG: Record<
     color:
       "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
     icon: <FileText className="h-3.5 w-3.5" />,
+  },
+  security_tool: {
+    label: "Security Tools",
+    color:
+      "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
+    icon: <Shield className="h-3.5 w-3.5" />,
   },
   general: {
     label: "General",
